@@ -36,3 +36,21 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Python (ML branch)
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+models/*.pkl
+models/*.joblib
+
+# Env files
+.env
+.env.local
+!.env.example
+
+# Database
+*.db
+prisma/migrations/
