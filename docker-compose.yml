@@ -25,6 +25,22 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+  api:
+    build:
+      context: ./apps/api
+    container_name: solanaguard_api
+    restart: unless-stopped
+    env_file: apps/api/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/solanaguard
+    volumes:
+      - ./apps/api:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uv run fastapi run app/main.py --host 0.0.0.0 --port 8000
 
 volumes:
   postgres_data:
