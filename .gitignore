@@ -54,3 +54,6 @@ models/*.joblib
 # Database
 *.db
 prisma/migrations/
+
+# Prisma 7 generated client
+**/generated/

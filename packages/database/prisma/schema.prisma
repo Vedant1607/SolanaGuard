@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProtocolCategory {
+  DEX
+  LENDING
+  LIQUID_STAKING
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AnomalyType {
+  LIQUIDITY_WITHDRAWAL
+  TX_SPIKE
+  WHALE_MOVEMENT
+  PRICE_DEVIATION
+  RUG_PULL_SIGNAL
+}
+
+model Protocol {
+  id        String             @id @default(cuid())
+  slug      String             @unique
+  name      String
+  category  ProtocolCategory
+  programId String             @unique
+  isActive  Boolean            @default(true)
+  createdAt DateTime           @default(now())
+
+  snapshots  ProtocolSnapshot[]
+  riskScores RiskScore[]
+  anomalies  Anomaly[]
+
+  @@map("protocols")
+}
+
+model ProtocolSnapshot {
+  id               String   @id @default(cuid())
+  protocolId       String
+  protocol         Protocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  tvlUsd           Float
+  volume24hUsd     Float    @default(0)
+  txCount24h       Int      @default(0)
+  uniqueWallets24h Int      @default(0)
+  liquidityDepth   Float    @default(0)
+  utilizationRate  Float    @default(0)
+  snapshotAt       DateTime @default(now())
+
+  @@index([protocolId, snapshotAt])
+  @@map("protocol_snapshots")
+}
+
+model RiskScore {
+  id           String    @id @default(cuid())
+  protocolId   String
+  protocol     Protocol  @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  overallScore Float
+  riskLevel    RiskLevel
+  method       String    // "rule_based" (MVP) | "ml" (teammate's branch)
+  explanation  String?
+  scoredAt     DateTime  @default(now())
+
+  @@index([protocolId, scoredAt])
+  @@map("risk_scores")
+}
+
+model Anomaly {
+  id           String      @id @default(cuid())
+  protocolId   String
+  protocol     Protocol    @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  type         AnomalyType
+  severity     RiskLevel
+  score        Float
+  description  String
+  acknowledged Boolean     @default(false)
+  detectedAt   DateTime    @default(now())
+
+  @@index([protocolId, detectedAt])
+  @@map("anomalies")
+}
