@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 async def _ingestion_loop():
+    await asyncio.sleep(settings.INGEST_INTERVAL_SECONDS)
     while True:
         try:
             count = await ingest_all_protocols()
