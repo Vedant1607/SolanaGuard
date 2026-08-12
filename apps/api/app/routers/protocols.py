@@ -7,17 +7,37 @@ router = APIRouter()
 
 @router.get("")
 async def list_protocols():
+    """Every active protocol with its latest snapshot + latest risk score
+    joined in — this is what the dashboard's protocol grid consumes."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            'SELECT slug, name, category, "programId", "isActive" FROM protocols ORDER BY name'
+            '''
+            SELECT
+                p.slug, p.name, p.category,
+                s."tvlUsd", s."txCount24h", s."snapshotAt",
+                rs."overallScore", rs."riskLevel", rs.explanation, rs."scoredAt"
+            FROM protocols p
+            LEFT JOIN LATERAL (
+                SELECT "tvlUsd", "txCount24h", "snapshotAt"
+                FROM protocol_snapshots
+                WHERE "protocolId" = p.id
+                ORDER BY "snapshotAt" DESC
+                LIMIT 1
+            ) s ON true
+            LEFT JOIN LATERAL (
+                SELECT "overallScore", "riskLevel", explanation, "scoredAt"
+                FROM risk_scores
+                WHERE "protocolId" = p.id
+                ORDER BY "scoredAt" DESC
+                LIMIT 1
+            ) rs ON true
+            WHERE p."isActive" = true
+            ORDER BY p.name
+            '''
         )
     return [dict(row) for row in rows]
 
-@router.post("/ingest")
-async def trigger_ingestion():
-    count = await ingest_all_protocols()
-    return {"snapshots_written": count}
 
 @router.get("/{slug}/risk-score")
 async def get_latest_risk_score(slug: str):
@@ -37,3 +57,9 @@ async def get_latest_risk_score(slug: str):
         if row is None:
             return {"detail": "No risk score yet for this protocol"}
         return dict(row)
+
+
+@router.post("/ingest")
+async def trigger_ingestion():
+    count = await ingest_all_protocols()
+    return {"snapshots_written": count}
