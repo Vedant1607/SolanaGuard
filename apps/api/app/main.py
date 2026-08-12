@@ -1,3 +1,6 @@
+import asyncio
+from app.tasks.ingest import ingest_all_protocols
+from app.config import settings
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,11 +13,21 @@ from app.routers import protocols
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+async def _ingestion_loop():
+    while True:
+        try:
+            count = await ingest_all_protocols()
+            logger.info(f"Ingestion cycle complete: {count} snapshots written")
+        except Exception:
+            logger.exception("Ingestion cycle failed")
+        await asyncio.sleep(settings.INGEST_INTERVAL_SECONDS)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 SolanaGuard API starting up")
+    task = asyncio.create_task(_ingestion_loop())
     yield
+    task.cancel()
     await close_pool()
     logger.info("👋 SolanaGuard API shutting down")
 

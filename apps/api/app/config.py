@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     HELIUS_API_KEY: str = ""
     HELIUS_RPC_URL: str = "https://mainnet.helius-rpc.com/?api-key="
+    INGEST_INTERVAL_SECONDS: int = 300  # 5 min MVP cadence — tune later
 
     class Config:
         env_file = ".env"
