@@ -1,4 +1,5 @@
 import { fetchProtocols, type RiskLevel, type ProtocolCategory } from "@/lib/api";
+export const dynamic = "force-dynamic";
 
 const RISK_STYLES: Record<RiskLevel, string> = {
   LOW: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",

@@ -16,7 +16,7 @@ export interface Protocol {
 
 export async function fetchProtocols(): Promise<Protocol[]> {
   const res = await fetch(`${process.env.API_URL}/api/v1/protocols`, {
-    next: { revalidate: 60 },
+    cache: "no-store",
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch protocols: ${res.status}`);
