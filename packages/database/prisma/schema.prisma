@@ -1,6 +1,7 @@
 generator client {
   provider = "prisma-client"
   output   = "../generated/client"
+  importFileExtension = "ts"
 }
 
 datasource db {
@@ -87,4 +88,13 @@ model Anomaly {
 
   @@index([protocolId, detectedAt])
   @@map("anomalies")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("users")
 }

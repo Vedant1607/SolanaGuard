@@ -23,6 +23,9 @@ importers:
       '@clerk/nextjs':
         specifier: ^7.7.6
         version: 7.7.6(next@16.3.0(@babel/core@7.29.7)(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@solanaguard/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       next:
         specifier: 16.3.0
         version: 16.3.0(@babel/core@7.29.7)(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
