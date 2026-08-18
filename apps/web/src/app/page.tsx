@@ -1,4 +1,8 @@
+import { auth } from "@clerk/nextjs/server";
 import { fetchProtocols, type RiskLevel, type ProtocolCategory } from "@/lib/api";
+import { getWatchedSlugs } from "@/lib/get-watched-slugs";
+import { WatchlistButton } from "@/components/WatchlistButton";
+
 export const dynamic = "force-dynamic";
 
 const RISK_STYLES: Record<RiskLevel, string> = {
@@ -34,7 +38,11 @@ function timeAgo(iso: string | null): string {
 }
 
 export default async function DashboardPage() {
-  const protocols = await fetchProtocols();
+  const [protocols, watchedSlugs, { isAuthenticated }] = await Promise.all([
+    fetchProtocols(),
+    getWatchedSlugs(),
+    auth(),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-mono">
@@ -51,10 +59,7 @@ export default async function DashboardPage() {
       <main className="p-6 max-w-6xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {protocols.map((p) => (
-            <div
-              key={p.slug}
-              className="rounded-lg border border-slate-800 bg-slate-900/50 p-5"
-            >
+            <div key={p.slug} className="rounded-lg border border-slate-800 bg-slate-900/50 p-5">
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <div className="font-bold text-slate-100">{p.name}</div>
@@ -62,13 +67,16 @@ export default async function DashboardPage() {
                     {p.category.replace("_", " ")}
                   </div>
                 </div>
-                {p.riskLevel && (
-                  <span
-                    className={`text-xs font-bold px-2 py-0.5 rounded border ${RISK_STYLES[p.riskLevel]}`}
-                  >
-                    {p.riskLevel}
-                  </span>
-                )}
+                <div className="flex flex-col items-end gap-2">
+                  {p.riskLevel && (
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded border ${RISK_STYLES[p.riskLevel]}`}>
+                      {p.riskLevel}
+                    </span>
+                  )}
+                  {isAuthenticated && (
+                    <WatchlistButton slug={p.slug} initialWatched={watchedSlugs.has(p.slug)} />
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -85,14 +93,10 @@ export default async function DashboardPage() {
               </div>
 
               {p.explanation && (
-                <p className="text-xs text-slate-500 mt-3 leading-relaxed">
-                  {p.explanation}
-                </p>
+                <p className="text-xs text-slate-500 mt-3 leading-relaxed">{p.explanation}</p>
               )}
 
-              <div className="text-xs text-slate-600 mt-3">
-                Updated {timeAgo(p.snapshotAt)}
-              </div>
+              <div className="text-xs text-slate-600 mt-3">Updated {timeAgo(p.snapshotAt)}</div>
             </div>
           ))}
         </div>
