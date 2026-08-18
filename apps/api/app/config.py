@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     HELIUS_API_KEY: str = ""
     HELIUS_RPC_URL: str = "https://mainnet.helius-rpc.com/?api-key="
     INGEST_INTERVAL_SECONDS: int = 300  # 5 min MVP cadence — tune later
-
+    RESEND_API_KEY: str = ""
+    ALERT_FROM_EMAIL: str = "SolanaGuard Alerts <onboarding@resend.dev>"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from app.db import get_pool
 from app.solana.protocols import LAUNCH_PROTOCOLS, get_protocol_metrics
 from app.scoring.rule_based import score_from_snapshots
+from app.alerts.email import send_alert_email
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,16 @@ async def ingest_all_protocols() -> int:
                             latest_tvl=latest["tvlUsd"], previous_tvl=previous["tvlUsd"],
                             latest_tx=latest["txCount24h"], previous_tx=previous["txCount24h"],
                         )
+                        previous_level_row = await conn.fetchrow(
+                            'SELECT "riskLevel" FROM risk_scores WHERE "protocolId" = $1 '
+                            'ORDER BY "scoredAt" DESC LIMIT 1',
+                            protocol_id,
+                        )
+                        previous_level = previous_level_row["riskLevel"] if previous_level_row else None
+                        escalated = (
+                            result.risk_level in ("HIGH", "CRITICAL")
+                            and result.risk_level != previous_level
+                        )
                         await conn.execute(
                             '''
                             INSERT INTO risk_scores
@@ -73,6 +84,20 @@ async def ingest_all_protocols() -> int:
                             "rule_based", result.explanation, datetime.now(timezone.utc).replace(tzinfo=None),
                         )
                         logger.info(f"Risk score: {slug} = {result.overall_score} ({result.risk_level})")
+                        if escalated:
+                            watchers = await conn.fetch(
+                                'SELECT u.email FROM watchlist_items w '
+                                'JOIN users u ON u.id = w."userId" '
+                                'WHERE w."protocolId" = $1',
+                                protocol_id,
+                            )
+                            for w in watchers:
+                                sent = await send_alert_email(
+                                    to_email=w["email"], protocol_name=slug,
+                                    risk_level=result.risk_level, score=result.overall_score,
+                                    explanation=result.explanation,
+                                )
+                                logger.info(f"Alert email to {w['email']} for {slug}: {'sent' if sent else 'failed'}")
                     else:
                         logger.info(f"Not enough history yet for {slug} — skipping score")
             except Exception:

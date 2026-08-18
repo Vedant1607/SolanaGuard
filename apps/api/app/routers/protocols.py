@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from app.db import get_pool
 from app.tasks.ingest import ingest_all_protocols
+from app.alerts.email import send_alert_email
 
 router = APIRouter()
 
@@ -63,3 +64,12 @@ async def get_latest_risk_score(slug: str):
 async def trigger_ingestion():
     count = await ingest_all_protocols()
     return {"snapshots_written": count}
+
+@router.post("/{slug}/test-alert")
+async def test_alert(slug: str, to_email: str):
+    sent = await send_alert_email(
+        to_email=to_email, protocol_name=slug,
+        risk_level="HIGH", score=72.5,
+        explanation="This is a test alert — not a real risk event.",
+    )
+    return {"sent": sent}
