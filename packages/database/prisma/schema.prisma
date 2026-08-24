@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/client"
+  provider            = "prisma-client"
+  output              = "../generated/client"
   importFileExtension = "ts"
 }
 
@@ -30,17 +30,17 @@ enum AnomalyType {
 }
 
 model Protocol {
-  id        String             @id @default(cuid())
-  slug      String             @unique
+  id        String           @id @default(cuid())
+  slug      String           @unique
   name      String
   category  ProtocolCategory
-  programId String             @unique
-  isActive  Boolean            @default(true)
-  createdAt DateTime           @default(now())
+  programId String           @unique
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
 
-  snapshots  ProtocolSnapshot[]
-  riskScores RiskScore[]
-  anomalies  Anomaly[]
+  snapshots      ProtocolSnapshot[]
+  riskScores     RiskScore[]
+  anomalies      Anomaly[]
   watchlistItems WatchlistItem[]
 
   @@map("protocols")
@@ -68,7 +68,7 @@ model RiskScore {
   protocol     Protocol  @relation(fields: [protocolId], references: [id], onDelete: Cascade)
   overallScore Float
   riskLevel    RiskLevel
-  method       String    // "rule_based" (MVP) | "ml" (teammate's branch)
+  method       String // "rule_based" (MVP) | "ml" (teammate's branch)
   explanation  String?
   scoredAt     DateTime  @default(now())
 
@@ -92,11 +92,12 @@ model Anomaly {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  clerkId   String   @unique
-  email     String   @unique
-  createdAt DateTime @default(now())
+  id             String          @id @default(cuid())
+  clerkId        String          @unique
+  email          String          @unique
+  createdAt      DateTime        @default(now())
   watchlistItems WatchlistItem[]
+  telegramChatId String?
 
   @@map("users")
 }

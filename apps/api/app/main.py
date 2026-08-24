@@ -9,9 +9,11 @@ import logging
 from app.config import settings
 from app.db import close_pool
 from app.routers import protocols
+from app.routers import telegram
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
 
 async def _ingestion_loop():
     await asyncio.sleep(settings.INGEST_INTERVAL_SECONDS)
@@ -48,7 +50,7 @@ app.add_middleware(
 )
 
 app.include_router(protocols.router, prefix="/api/v1/protocols", tags=["Protocols"])
-
+app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["Telegram"])
 
 @app.get("/health", tags=["Health"])
 async def health_check():

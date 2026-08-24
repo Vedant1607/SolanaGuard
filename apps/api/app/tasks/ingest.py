@@ -7,6 +7,7 @@ from app.db import get_pool
 from app.solana.protocols import LAUNCH_PROTOCOLS, get_protocol_metrics
 from app.scoring.rule_based import score_from_snapshots
 from app.alerts.email import send_alert_email
+from app.alerts.telegram import send_telegram_message
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,18 @@ async def ingest_all_protocols() -> int:
                                 protocol_id,
                             )
                             for w in watchers:
+                                telegram_watchers = await conn.fetch(
+                                    'SELECT u."telegramChatId" FROM watchlist_items w '
+                                    'JOIN users u ON u.id = w."userId" '
+                                    'WHERE w."protocolId" = $1 AND u."telegramChatId" IS NOT NULL',
+                                    protocol_id,
+                                )
+                                for tw in telegram_watchers:
+                                    sent = await send_telegram_message(
+                                        tw["telegramChatId"],
+                                        f"⚠️ {slug} risk level: {result.risk_level} ({result.overall_score}/100)\n{result.explanation}",
+                                    )
+                                logger.info(f"Telegram alert to {tw['telegramChatId']} for {slug}: {'sent' if sent else 'failed'}")
                                 sent = await send_alert_email(
                                     to_email=w["email"], protocol_name=slug,
                                     risk_level=result.risk_level, score=result.overall_score,
