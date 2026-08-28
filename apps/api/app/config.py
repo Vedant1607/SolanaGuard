@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     INGEST_INTERVAL_SECONDS: int = 300  # 5 min MVP cadence — tune later
     RESEND_API_KEY: str = ""
     ALERT_FROM_EMAIL: str = "SolanaGuard Alerts <onboarding@resend.dev>"
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
     
     class Config:
         env_file = ".env"
