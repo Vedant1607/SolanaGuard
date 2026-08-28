@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { fetchProtocols, type RiskLevel, type ProtocolCategory } from "@/lib/api";
 import { getWatchedSlugs } from "@/lib/get-watched-slugs";
 import { WatchlistButton } from "@/components/WatchlistButton";
+import { getAppUser } from "@/lib/get-app-user";
 
 export const dynamic = "force-dynamic";
 
@@ -38,10 +39,11 @@ function timeAgo(iso: string | null): string {
 }
 
 export default async function DashboardPage() {
-  const [protocols, watchedSlugs, { isAuthenticated }] = await Promise.all([
+  const [protocols, watchedSlugs, { isAuthenticated }, appUser] = await Promise.all([
     fetchProtocols(),
     getWatchedSlugs(),
     auth(),
+    getAppUser(),
   ]);
 
   return (
@@ -50,9 +52,24 @@ export default async function DashboardPage() {
         <div className="flex items-center gap-2 font-bold text-lg">
           <span className="text-cyan-400">Solana</span>Guard
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          {protocols.length} protocols monitored
+        <div className="flex items-center gap-3">
+          {isAuthenticated && (
+            appUser?.telegramChatId ? (
+              <span className="text-xs text-emerald-400">✓ Telegram connected</span>
+            ) : (
+              <a
+                href={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}?start=${appUser?.id}`}
+                target="_blank"
+                className="text-xs text-cyan-400 underline"
+              >
+                Connect Telegram
+              </a>
+            )
+          )}
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            {protocols.length} protocols monitored
+          </div>
         </div>
       </header>
 
