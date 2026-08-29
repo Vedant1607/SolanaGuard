@@ -29,6 +29,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       >
         <body className="min-h-full flex flex-col">
           <header className="flex justify-end items-center gap-3 p-4 border-b border-slate-800">
+            <a href="/pricing" className="text-xs text-slate-400 hover:text-slate-200">Pricing</a>
              <Show when="signed-out">
               <SignInButton mode="modal"/>
               <SignUpButton mode="modal">
