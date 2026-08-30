@@ -1,0 +1,1 @@
+export const FREE_PROTOCOL_LIMIT = 5;
