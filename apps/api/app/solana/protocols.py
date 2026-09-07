@@ -11,6 +11,7 @@ six (Kamino, Marginfi) were wrong and have been corrected.
 import httpx
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from app.solana.client import get_solana_client
 
@@ -34,17 +35,19 @@ class ProtocolMetrics:
     tx_count_24h: int
 
 
-async def fetch_tvl(llama_slug: str) -> float:
+async def fetch_tvl(llama_slug: str) -> float | None:
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             resp = await client.get(f"https://api.llama.fi/protocol/{llama_slug}")
             if resp.status_code == 200:
                 tvl_series = resp.json().get("tvl", [])
                 if tvl_series:
-                    return tvl_series[-1].get("totalLiquidityUSD", 0.0)
+                    tvl_usd = tvl_series[-1].get("totalLiquidityUSD")
+                    if isinstance(tvl_usd, (int, float)) and tvl_usd > 0:
+                        return float(tvl_usd)
         except Exception as e:
             logger.warning(f"DefiLlama fetch failed for {llama_slug}: {e}")
-    return 0.0
+    return None
 
 
 async def get_protocol_metrics(slug: str) -> Optional[ProtocolMetrics]:
@@ -53,13 +56,19 @@ async def get_protocol_metrics(slug: str) -> Optional[ProtocolMetrics]:
         return None
 
     tvl_usd = await fetch_tvl(cfg["llama_slug"])
+    if tvl_usd is None:
+        logger.warning(f"No valid TVL returned for {slug}, skipping snapshot")
+        return None
 
-    tx_count_24h = 0
     try:
         client = get_solana_client()
-        sigs = await client.get_recent_signatures(cfg["program_id"], limit=100)
-        tx_count_24h = len(sigs)
+        window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+        tx_count_24h = await client.count_signatures_since(
+            cfg["program_id"],
+            int(window_start.timestamp()),
+        )
     except Exception as e:
-        logger.warning(f"Helius tx fetch failed for {slug}: {e}")
+        logger.warning(f"Helius 24-hour transaction count failed for {slug}: {e}")
+        return None
 
     return ProtocolMetrics(slug=slug, tvl_usd=tvl_usd, tx_count_24h=tx_count_24h)

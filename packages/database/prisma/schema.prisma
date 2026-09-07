@@ -24,6 +24,7 @@ enum RiskLevel {
 enum AnomalyType {
   LIQUIDITY_WITHDRAWAL
   TX_SPIKE
+  TVL_DECLINE
   WHALE_MOVEMENT
   PRICE_DEVIATION
   RUG_PULL_SIGNAL
@@ -77,17 +78,23 @@ model RiskScore {
 }
 
 model Anomaly {
-  id           String      @id @default(cuid())
-  protocolId   String
-  protocol     Protocol    @relation(fields: [protocolId], references: [id], onDelete: Cascade)
-  type         AnomalyType
-  severity     RiskLevel
-  score        Float
-  description  String
-  acknowledged Boolean     @default(false)
-  detectedAt   DateTime    @default(now())
+  id               String      @id @default(cuid())
+  protocolId       String
+  protocol         Protocol    @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  sourceSnapshotId String
+  detectorVersion  String      @default("legacy")
+  detectionMethod  String      @default("legacy")
+  type             AnomalyType
+  severity         RiskLevel
+  score            Float       // Calibration percentile in [0, 100]
+  rawScore         Float?
+  scoreThreshold   Float?
+  description      String
+  acknowledged     Boolean     @default(false)
+  detectedAt       DateTime    @default(now())
 
   @@index([protocolId, detectedAt])
+  @@unique([protocolId, sourceSnapshotId, detectorVersion, type])
   @@map("anomalies")
 }
 
