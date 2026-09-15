@@ -1,6 +1,4 @@
-DATA_DIR = Path(__file__).parent / "data" / "synthetic"
-MODELS_DIR = Path(__file__).parent / "models"
-Anomaly Detector — Component 1.
+"""Anomaly Detector — Component 1.
 
 One Isolation Forest per protocol CATEGORY (not per protocol, not global):
 DEX, LENDING, and LIQUID_STAKING each have genuinely different "normal"
@@ -9,6 +7,11 @@ or too blind for LIQUID_STAKING. A per-protocol model would be more
 precise eventually, but needs more history than 3 weeks gives us right now
 — category-level is the right grain for a first working model.
 """
+
+from pathlib import Path
+
+DATA_DIR = Path(__file__).parent / "data" / "synthetic"
+MODELS_DIR = Path(__file__).parent / "models"
 
 import json
 from pathlib import Path

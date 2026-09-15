@@ -30,7 +30,41 @@ def load_model(category: str):
     return joblib.load(model_path)
 
 
-def score_protocol(category: str, snapshots: list[dict]) -> dict | None:
+def _normalize_snapshots(
+    category: str,
+    protocol_slug: str,
+    snapshots: list[dict],
+) -> pd.DataFrame:
+    """
+    Convert database snapshot fields (camelCase) into the snake_case
+    format expected by the ML feature pipeline.
+    """
+
+    df = pd.DataFrame(snapshots)
+
+    rename_map = {
+        "tvlUsd": "tvl_usd",
+        "volume24hUsd": "volume_24h_usd",
+        "txCount24h": "tx_count_24h",
+        "uniqueWallets24h": "unique_wallets_24h",
+        "liquidityDepth": "liquidity_depth",
+        "utilizationRate": "utilization_rate",
+        "snapshotAt": "snapshot_at",
+    }
+
+    df = df.rename(columns=rename_map)
+
+    df["category"] = category
+    df["protocol_slug"] = protocol_slug
+
+    return df
+
+
+def score_protocol(
+    category: str,
+    protocol_slug: str,
+    snapshots: list[dict],
+) -> dict | None:
     """
     Run the ML anomaly detector and risk scorer against historical
     snapshots for one protocol.
@@ -41,7 +75,7 @@ def score_protocol(category: str, snapshots: list[dict]) -> dict | None:
     if len(snapshots) <= 24:
         return None
 
-    df = pd.DataFrame(snapshots)
+    df = _normalize_snapshots(category, protocol_slug, snapshots)
 
     features = build_features(df)
 
