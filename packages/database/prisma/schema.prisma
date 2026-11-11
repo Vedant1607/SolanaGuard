@@ -53,7 +53,7 @@ model ProtocolSnapshot {
   protocol         Protocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
   tvlUsd           Float
   volume24hUsd     Float    @default(0)
-  txCount24h       Int      @default(0)
+  txCount24h       Int? // NULL = transaction count unavailable (never a genuine zero)
   uniqueWallets24h Int      @default(0)
   liquidityDepth   Float    @default(0)
   utilizationRate  Float    @default(0)

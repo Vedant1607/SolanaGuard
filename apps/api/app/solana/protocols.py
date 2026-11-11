@@ -32,7 +32,7 @@ LAUNCH_PROTOCOLS = {
 class ProtocolMetrics:
     slug: str
     tvl_usd: float
-    tx_count_24h: int
+    tx_count_24h: int | None  # None = unavailable, never a genuine zero
 
 
 async def fetch_tvl(llama_slug: str) -> float | None:
@@ -50,6 +50,15 @@ async def fetch_tvl(llama_slug: str) -> float | None:
     return None
 
 
+def _describe_rpc_error(error: Exception) -> str:
+    """Summarise an RPC failure without echoing the request URL, which embeds the API key."""
+    if isinstance(error, httpx.HTTPStatusError):
+        return f"HTTP {error.response.status_code}"
+    if isinstance(error, httpx.HTTPError):
+        return type(error).__name__
+    return f"{type(error).__name__}: {error}"
+
+
 async def get_protocol_metrics(slug: str) -> Optional[ProtocolMetrics]:
     cfg = LAUNCH_PROTOCOLS.get(slug)
     if not cfg:
@@ -60,6 +69,7 @@ async def get_protocol_metrics(slug: str) -> Optional[ProtocolMetrics]:
         logger.warning(f"No valid TVL returned for {slug}, skipping snapshot")
         return None
 
+    tx_count_24h: int | None
     try:
         client = get_solana_client()
         window_start = datetime.now(timezone.utc) - timedelta(hours=24)
@@ -68,7 +78,10 @@ async def get_protocol_metrics(slug: str) -> Optional[ProtocolMetrics]:
             int(window_start.timestamp()),
         )
     except Exception as e:
-        logger.warning(f"Helius 24-hour transaction count failed for {slug}: {e}")
-        return None
+        tx_count_24h = None
+        logger.warning(
+            f"Helius 24-hour transaction count unavailable for {slug} "
+            f"({_describe_rpc_error(e)}); storing TVL-only snapshot with txCount24h=NULL"
+        )
 
     return ProtocolMetrics(slug=slug, tvl_usd=tvl_usd, tx_count_24h=tx_count_24h)

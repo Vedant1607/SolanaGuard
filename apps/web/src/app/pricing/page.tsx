@@ -1,8 +1,15 @@
 import { getSubscription } from "@/lib/get-subscription";
 import { UpgradeButton } from "@/components/UpgradeButton";
+import { isBillingConfigured } from "@/lib/razorpay";
+import { unstable_rethrow } from "next/navigation";
 
 export default async function PricingPage() {
-  const { plan } = await getSubscription();
+  const { plan } = await getSubscription().catch((error: unknown) => {
+    unstable_rethrow(error); // let Next.js dynamic-rendering signals through
+    console.error("[pricing] Subscription lookup failed; showing Free plan", error instanceof Error ? error.message : error);
+    return { plan: "FREE" as const };
+  });
+  const billingEnabled = isBillingConfigured();
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-mono p-6">
@@ -31,7 +38,7 @@ export default async function PricingPage() {
             {plan === "PRO" ? (
               <div className="text-xs text-emerald-400 text-center">Current plan</div>
             ) : (
-              <UpgradeButton />
+              <UpgradeButton enabled={billingEnabled} />
             )}
           </div>
         </div>

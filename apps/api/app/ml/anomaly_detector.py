@@ -50,7 +50,7 @@ class Snapshot:
     protocol_id: str
     slug: str
     tvl_usd: float
-    tx_count_24h: int
+    tx_count_24h: int | None  # None = unavailable; such snapshots are never scored
     snapshot_at: datetime
 
 
@@ -156,7 +156,7 @@ async def fetch_snapshots(pool: asyncpg.Pool) -> list[Snapshot]:
             protocol_id=row["protocolId"],
             slug=row["slug"],
             tvl_usd=float(row["tvlUsd"]),
-            tx_count_24h=int(row["txCount24h"]),
+            tx_count_24h=None if row["txCount24h"] is None else int(row["txCount24h"]),
             snapshot_at=row["snapshotAt"],
         )
         for row in rows
@@ -167,6 +167,7 @@ def _is_valid_snapshot(snapshot: Snapshot) -> bool:
     return (
         math.isfinite(snapshot.tvl_usd)
         and snapshot.tvl_usd >= MIN_TVL_USD
+        and snapshot.tx_count_24h is not None
         and snapshot.tx_count_24h >= 0
     )
 
@@ -212,7 +213,13 @@ def build_features(snapshots: Iterable[Snapshot]) -> FeatureBuildResult:
                     segment_id += 1
 
             if not _is_valid_snapshot(snapshot):
-                skips["invalid_raw_snapshot"] += 1
+                # A missing transaction count is unavailable data, not zero: the
+                # snapshot is rejected and breaks the contiguous segment, exactly
+                # like any other invalid raw snapshot.
+                if snapshot.tx_count_24h is None:
+                    skips["missing_tx_count"] += 1
+                else:
+                    skips["invalid_raw_snapshot"] += 1
                 segment = []
                 segment_id += 1
                 previous = snapshot

@@ -1,5 +1,6 @@
 import asyncio
 from app.tasks.ingest import ingest_all_protocols
+from app.tasks.anomaly_detection import anomaly_detector_loop
 from app.config import settings
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -8,10 +9,16 @@ import logging
 
 from app.config import settings
 from app.db import close_pool
+from app.log_redaction import install_log_redaction
+from app.routers import anomalies
 from app.routers import protocols
 from app.routers import telegram
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# httpx logs every request URL at INFO; Helius and Telegram URLs embed credentials.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+# Defence in depth: scrub credentials from every emitted record, tracebacks included.
+install_log_redaction()
 logger = logging.getLogger(__name__)
 
 
@@ -28,11 +35,18 @@ async def _ingestion_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 SolanaGuard API starting up")
-    task = asyncio.create_task(_ingestion_loop())
-    yield
-    task.cancel()
-    await close_pool()
-    logger.info("👋 SolanaGuard API shutting down")
+    tasks = [
+        asyncio.create_task(_ingestion_loop(), name="ingestion-loop"),
+        asyncio.create_task(anomaly_detector_loop(), name="anomaly-detector-loop"),
+    ]
+    try:
+        yield
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await close_pool()
+        logger.info("👋 SolanaGuard API shutting down")
 
 
 app = FastAPI(
@@ -50,6 +64,7 @@ app.add_middleware(
 )
 
 app.include_router(protocols.router, prefix="/api/v1/protocols", tags=["Protocols"])
+app.include_router(anomalies.router, prefix="/api/v1/anomalies", tags=["Anomalies"])
 app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["Telegram"])
 
 @app.get("/health", tags=["Health"])

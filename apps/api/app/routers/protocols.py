@@ -17,6 +17,7 @@ async def list_protocols():
             SELECT
                 p.slug, p.name, p.category,
                 s."tvlUsd", s."txCount24h", s."snapshotAt",
+                prev."snapshotAt" AS "previousSnapshotAt",
                 rs."overallScore", rs."riskLevel", rs.explanation, rs."scoredAt"
             FROM protocols p
             LEFT JOIN LATERAL (
@@ -26,6 +27,16 @@ async def list_protocols():
                 ORDER BY "snapshotAt" DESC
                 LIMIT 1
             ) s ON true
+            -- The snapshot the latest rule-based score was compared against,
+            -- so clients can flag scores computed across a long data gap.
+            LEFT JOIN LATERAL (
+                SELECT "snapshotAt"
+                FROM protocol_snapshots
+                WHERE "protocolId" = p.id
+                ORDER BY "snapshotAt" DESC
+                OFFSET 1
+                LIMIT 1
+            ) prev ON true
             LEFT JOIN LATERAL (
                 SELECT "overallScore", "riskLevel", explanation, "scoredAt"
                 FROM risk_scores

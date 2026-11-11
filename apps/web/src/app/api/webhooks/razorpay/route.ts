@@ -3,11 +3,16 @@ import { NextResponse } from "next/server";
 import { db } from "@solanaguard/database";
 
 export async function POST(req: Request) {
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    return NextResponse.json({ error: "Billing webhooks are not configured" }, { status: 503 });
+  }
+
   const body = await req.text();
   const signature = req.headers.get("x-razorpay-signature");
 
   const expectedSignature = crypto
-    .createHmac("sha256", process.env.RAZORPAY_WEBHOOK_SECRET!)
+    .createHmac("sha256", webhookSecret)
     .update(body)
     .digest("hex");
 
