@@ -12,6 +12,7 @@ from app.config import settings
 from app.db import close_pool
 from app.log_redaction import install_log_redaction
 from app.routers import anomalies
+from app.routers import intelligence
 from app.routers import protocols
 from app.routers import security
 from app.routers import telegram
@@ -70,6 +71,7 @@ app.add_middleware(
 app.include_router(protocols.router, prefix="/api/v1/protocols", tags=["Protocols"])
 app.include_router(security.router, prefix="/api/v1/protocols", tags=["Protocols"])
 app.include_router(security.status_router, prefix="/api/v1/security", tags=["Security"])
+app.include_router(intelligence.router, prefix="/api/v1/protocols", tags=["Intelligence"])
 app.include_router(anomalies.router, prefix="/api/v1/anomalies", tags=["Anomalies"])
 app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["Telegram"])
 
