@@ -1,6 +1,7 @@
 import asyncio
 from app.tasks.ingest import ingest_all_protocols
 from app.tasks.anomaly_detection import anomaly_detector_loop
+from app.tasks.security_collector import security_collector_loop
 from app.config import settings
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -12,6 +13,7 @@ from app.db import close_pool
 from app.log_redaction import install_log_redaction
 from app.routers import anomalies
 from app.routers import protocols
+from app.routers import security
 from app.routers import telegram
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -39,6 +41,8 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_ingestion_loop(), name="ingestion-loop"),
         asyncio.create_task(anomaly_detector_loop(), name="anomaly-detector-loop"),
     ]
+    if settings.SECURITY_COLLECTOR_ENABLED:
+        tasks.append(asyncio.create_task(security_collector_loop(), name="security-collector-loop"))
     try:
         yield
     finally:
@@ -64,6 +68,7 @@ app.add_middleware(
 )
 
 app.include_router(protocols.router, prefix="/api/v1/protocols", tags=["Protocols"])
+app.include_router(security.router, prefix="/api/v1/protocols", tags=["Protocols"])
 app.include_router(anomalies.router, prefix="/api/v1/anomalies", tags=["Anomalies"])
 app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["Telegram"])
 

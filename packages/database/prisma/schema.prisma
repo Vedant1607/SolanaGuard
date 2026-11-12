@@ -12,6 +12,39 @@ enum ProtocolCategory {
   DEX
   LENDING
   LIQUID_STAKING
+  PERPS
+}
+
+// How much of a protocol SolanaGuard can currently measure. FULL is reserved
+// for protocols with a protocol-specific adapter; until then everything is
+// PARTIAL. New catalogue / user-added protocols start PARTIAL.
+enum SupportLevel {
+  FULL
+  PARTIAL
+  UNSUPPORTED
+}
+
+// PROGRAM: executable program. STAKE_POOL: stake-pool account (not a program).
+// MARKET: protocol-wide state/market account. MINT: SPL token mint.
+enum AddressKind {
+  PROGRAM
+  STAKE_POOL
+  MARKET
+  MINT
+}
+
+enum AddressVerification {
+  UNVERIFIED
+  VERIFIED // account exists on mainnet with the expected owner/loader
+  MISMATCH // account missing or owned by something unexpected
+}
+
+// OK/STALE observations carry a value; MISSING/ERROR never do (DB CHECK).
+enum ObservationStatus {
+  OK
+  MISSING
+  STALE
+  ERROR
 }
 
 enum RiskLevel {
@@ -35,16 +68,77 @@ model Protocol {
   slug      String           @unique
   name      String
   category  ProtocolCategory
-  programId String           @unique
+  programId String           @unique // legacy "primary address"; protocol_addresses is the source of truth
   isActive  Boolean          @default(true)
   createdAt DateTime         @default(now())
+  supportLevel SupportLevel  @default(PARTIAL)
 
   snapshots      ProtocolSnapshot[]
   riskScores     RiskScore[]
   anomalies      Anomaly[]
   watchlistItems WatchlistItem[]
+  addresses      ProtocolAddress[]
+  observations   MetricObservation[]
 
   @@map("protocols")
+}
+
+// Registry of on-chain addresses per protocol. Rows are deactivated, never
+// deleted: RESTRICT foreign keys refuse deletes that would orphan history.
+// DB-only constraint (not expressible in Prisma): address must be base58, 32-44 chars.
+model ProtocolAddress {
+  id                 String              @id @default(cuid())
+  protocolId         String
+  protocol           Protocol            @relation(fields: [protocolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  address            String
+  kind               AddressKind
+  label              String
+  // The same shared program (e.g. SPL Stake Pool) may back many protocols.
+  isSharedDependency Boolean             @default(false)
+  expectedOwner      String?
+  verification       AddressVerification @default(UNVERIFIED)
+  verifiedAt         DateTime?
+  verificationNote   String?
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @default(now()) @updatedAt
+  observations       MetricObservation[]
+
+  @@unique([protocolId, address])
+  // Target of the composite FK that pins an observation's address to its protocol.
+  @@unique([id, protocolId])
+  @@index([address])
+  @@map("protocol_addresses")
+}
+
+// Raw measurements only; interpretation (evidence) is computed from these on
+// read and references their ids. DB-only CHECK constraints (not expressible
+// in Prisma): OK/STALE rows carry a value, MISSING/ERROR rows carry none, and
+// ERROR rows carry an errorCode.
+model MetricObservation {
+  id               String            @id @default(cuid())
+  protocolId       String
+  protocol         Protocol          @relation(fields: [protocolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  addressId        String?
+  // Composite FK: (addressId, protocolId) must name an address of the SAME protocol.
+  // NULL addressId (protocol-level metric) skips the check (MATCH SIMPLE).
+  address          ProtocolAddress?  @relation(fields: [addressId, protocolId], references: [id, protocolId], onDelete: Restrict, onUpdate: Restrict)
+  metricKey        String
+  status           ObservationStatus
+  valueNumeric     Decimal?          @db.Decimal(40, 12)
+  valueText        String?
+  unit             String
+  source           String
+  sourceObservedAt DateTime? // when the source measured it (NULL if the source gives only a slot)
+  sourceSlot       BigInt? // RPC context slot for on-chain reads
+  collectedAt      DateTime          @default(now()) // when SolanaGuard fetched it
+  adapterKey       String
+  adapterVersion   String
+  errorCode        String? // sanitised identifier, never a URL or credential
+
+  @@index([protocolId, metricKey, collectedAt(sort: Desc)])
+  @@index([addressId, metricKey, collectedAt(sort: Desc)])
+  @@map("metric_observations")
 }
 
 model ProtocolSnapshot {

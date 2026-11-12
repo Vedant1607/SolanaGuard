@@ -1,5 +1,5 @@
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type ProtocolCategory = "DEX" | "LENDING" | "LIQUID_STAKING";
+export type ProtocolCategory = "DEX" | "LENDING" | "LIQUID_STAKING" | "PERPS";
 export type AnomalyType = "LIQUIDITY_WITHDRAWAL" | "TX_SPIKE" | "TVL_DECLINE" | "WHALE_MOVEMENT" | "PRICE_DEVIATION" | "RUG_PULL_SIGNAL";
 
 export interface Protocol {

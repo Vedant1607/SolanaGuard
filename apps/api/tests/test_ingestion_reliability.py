@@ -125,10 +125,14 @@ class ProtocolMetricsAvailabilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(metrics.tx_count_24h, 4_321)
 
     async def test_unavailable_metrics_write_no_snapshot(self) -> None:
-        pool = SimpleNamespace(acquire=unittest.mock.Mock(side_effect=AssertionError("no DB use expected")))
-        with patch("app.tasks.ingest.get_protocol_metrics", AsyncMock(return_value=None)):
-            self.assertEqual(await ingest._ingest_protocols(pool), 0)
-        pool.acquire.assert_not_called()
+        # Only the isActive lookup may touch the database; no write follows.
+        conn = FakeIngestConnection(history=[])
+        with (
+            patch("app.tasks.ingest.LAUNCH_PROTOCOLS", {"orca": {}}),
+            patch("app.tasks.ingest.get_protocol_metrics", AsyncMock(return_value=None)),
+        ):
+            self.assertEqual(await ingest._ingest_protocols(FakeIngestPool(conn)), 0)
+        self.assertEqual(conn.executed, [])
 
 
 class FakeIngestConnection:
@@ -194,6 +198,29 @@ class TvlOnlySnapshotIngestionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(score_args[2], 30.0)  # 15 baseline + 15 for a 5% TVL drop; no tx term
         self.assertEqual(score_args[3], "LOW")
         self.assertIn("transaction count unavailable", score_args[5])
+
+
+class InactiveProtocolIngestionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_inactive_protocol_is_skipped_before_any_external_fetch(self) -> None:
+        conn = FakeIngestConnection(history=[])
+        queries = []
+
+        async def inactive(query, *args):
+            queries.append((query, args))
+            return None  # no row matches slug AND "isActive" = true
+
+        conn.fetchval = inactive
+        fetch_metrics = AsyncMock()
+        with (
+            patch("app.tasks.ingest.LAUNCH_PROTOCOLS", {"marginfi": {}}),
+            patch("app.tasks.ingest.get_protocol_metrics", fetch_metrics),
+        ):
+            self.assertEqual(await ingest._ingest_protocols(FakeIngestPool(conn)), 0)
+
+        fetch_metrics.assert_not_awaited()
+        self.assertEqual(conn.executed, [])
+        self.assertEqual(queries[0][1], ("marginfi",))
+        self.assertIn('"isActive" = true', queries[0][0])
 
 
 class FakeAlertConnection:

@@ -129,23 +129,35 @@ async def _score_latest_snapshots(conn, protocol_id: str, slug: str) -> None:
         logger.info(f"Not enough history yet for {slug} — skipping score")
 
 
+ACTIVE_PROTOCOL_QUERY = 'SELECT id FROM protocols WHERE slug = $1 AND "isActive" = true'
+
+
 async def _ingest_protocols(pool) -> int:
-    """Perform one ingestion cycle after deployment-wide coordination succeeds."""
+    """Perform one ingestion cycle after deployment-wide coordination succeeds.
+
+    ``protocols.isActive`` is authoritative: a protocol that is inactive (or
+    has no row) is skipped *before* any external fetch, so deactivating it in
+    the database stops collection, not just display. ``LAUNCH_PROTOCOLS`` only
+    supplies per-protocol source configuration (program ID, DefiLlama slug);
+    active protocols without such configuration (e.g. Drift, which is
+    security-monitored only) are not ingested here.
+    """
     written = 0
 
     for slug in LAUNCH_PROTOCOLS:
         try:
+            async with pool.acquire() as conn:
+                protocol_id = await conn.fetchval(ACTIVE_PROTOCOL_QUERY, slug)
+            if protocol_id is None:
+                logger.info(f"Protocol {slug} is inactive or has no row, skipping ingestion")
+                continue
+
             metrics = await get_protocol_metrics(slug)
             if metrics is None:
                 logger.warning(f"No metrics returned for {slug}, skipping")
                 continue
 
             async with pool.acquire() as conn:
-                protocol_id = await conn.fetchval('SELECT id FROM protocols WHERE slug = $1', slug)
-                if protocol_id is None:
-                    logger.warning(f"No protocol row for slug={slug}, skipping")
-                    continue
-
                 await conn.execute(
                     '''
                     INSERT INTO protocol_snapshots

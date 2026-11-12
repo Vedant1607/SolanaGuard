@@ -1,0 +1,634 @@
+{
+  "description": "Recorded public Solana mainnet getAccountInfo responses (header slices only).",
+  "recorded_at": "2026-11-11T18:56:33+00:00",
+  "endpoint": "public mainnet",
+  "exchanges": [
+    {
+      "address": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+      "offset": 0,
+      "length": 36,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231723
+          },
+          "value": {
+            "data": [
+              "AgAAAIdnJOr8Zo4xtYrybRNhir9qQfk6LqWlPPPo6sR5xjpW",
+              "base64"
+            ],
+            "executable": true,
+            "lamports": 6391493637,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 36
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "A7ZG7ByDi8DpzT9Ab7CiXhvgYTJQmaDPJkMDoPitaCQV",
+      "offset": 0,
+      "length": 45,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231724
+          },
+          "value": {
+            "data": [
+              "AwAAAITOkRoAAAAAAd6WDwlq/6cBQD36l5G03m6azxumE0D9YN4SpjaiwvxA",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 8907725481,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 1406429
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+      "offset": 0,
+      "length": 36,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231725
+          },
+          "value": {
+            "data": [
+              "AgAAAARZ+j9etGv4mq6oUDkLUFK+VxARD0GKFJCidOiJUHhP",
+              "base64"
+            ],
+            "executable": true,
+            "lamports": 1857389137,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 36
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "HzD2cCXXT3UQNjMMY6kDv9w6gZ9qquSdfoGXrLL3LXx",
+      "offset": 0,
+      "length": 45,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231729
+          },
+          "value": {
+            "data": [
+              "AwAAANoCahsAAAAAAd6WDwlq/6cBQD36l5G03m6azxumE0D9YN4SpjaiwvxA",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 8637691640,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 1700205
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+      "offset": 0,
+      "length": 36,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231730
+          },
+          "value": {
+            "data": [
+              "AgAAALeSOqTLrmBG3cfmLc9GAfb571+9EDJZEalEYeTomRIT",
+              "base64"
+            ],
+            "executable": true,
+            "lamports": 50334585,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 36
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "DMawCQzbgNTmbzaESc7o6pvL1KAeetY8zA7jNpzntHhU",
+      "offset": 0,
+      "length": 45,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231732
+          },
+          "value": {
+            "data": [
+              "AwAAAILMoBsAAAAAAd6WDwlq/6cBQD36l5G03m6azxumE0D9YN4SpjaiwvxA",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 4033504760,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 793869
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+      "offset": 0,
+      "length": 36,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231734
+          },
+          "value": {
+            "data": [
+              "AgAAALCj2NteOsPf+tyRpPc+hRFSbDKg2sRwo9znup2STWeS",
+              "base64"
+            ],
+            "executable": true,
+            "lamports": 78851581,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 36
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "CtXfPzz36dH5Ws4UYKZvrQ1Xqzn42ecDW6y8NKuiN8nD",
+      "offset": 0,
+      "length": 45,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231735
+          },
+          "value": {
+            "data": [
+              "AwAAACiXPxsAAAAAAezGza8ikrL73BJf2nvfj0M3epeaxgn4Is0mUqub30T8",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 53268311040,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 10485760
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+      "offset": 0,
+      "length": 36,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231736
+          },
+          "value": {
+            "data": [
+              "AgAAAIRMohNu7QFIhSZnG4DdIQLFGAqjMqCcvme5zoE+LQAr",
+              "base64"
+            ],
+            "executable": true,
+            "lamports": 33141440,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 36
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "9uSbGW1y9H5Av6H5TKxQ1wnFApSq2t3oEpfF2YfjDQGA",
+      "offset": 0,
+      "length": 45,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231738
+          },
+          "value": {
+            "data": [
+              "AwAAAHmohRsAAAAAAe2KAyz2sSxYZ1SbqX4ZAaGyRsTPFkrNy7+tAU2nA+an",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 53268311040,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 10485760
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
+      "offset": 0,
+      "length": 36,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231739
+          },
+          "value": {
+            "data": [
+              "AgAAADJQKNh1vTLv8bCRxj3bG45epF6oEAwQLIGGj0FOrxk+",
+              "base64"
+            ],
+            "executable": true,
+            "lamports": 89141464,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 36
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "4PQH9YmfuKrVyZaibkLYpJZPv2FPaybhq2GAuBcWMSBf",
+      "offset": 0,
+      "length": 45,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231740
+          },
+          "value": {
+            "data": [
+              "AwAAAFl+0xkAAAAAATx1WO+3A7MF9kBCF1KZa7xjmDEuWNqMLa+WoTPa7GR3",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 13986196560,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 2009383
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+      "offset": 0,
+      "length": 36,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231741
+          },
+          "value": {
+            "data": [
+              "AgAAAMycX43n4SCSmKum8wpo7i+bnBwt/dPJe1JGXP6NSmNK",
+              "base64"
+            ],
+            "executable": true,
+            "lamports": 153141440,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 36
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "EmiU8AQkB2sswTxVB6aCmsAJftoowZGGDXuytm6X65R3",
+      "offset": 0,
+      "length": 45,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231744
+          },
+          "value": {
+            "data": [
+              "AwAAAAV7nxkAAAAAAQlStK78U6Pye+CHHjyDiVK5VAYp8PB/9arie9bqax9A",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 7521233520,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 1080509
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH",
+      "offset": 0,
+      "length": 36,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231745
+          },
+          "value": {
+            "data": [
+              "AgAAAGJ1ShjkdERyHHhh6Ow6UX2jfMElSaQtlMX8ie/NQdYc",
+              "base64"
+            ],
+            "executable": true,
+            "lamports": 49155476,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 36
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "7dLgmtcTavcguNoynVimF9ZNVb13FvhXVRfj2HyrDGaP",
+      "offset": 0,
+      "length": 45,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231747
+          },
+          "value": {
+            "data": [
+              "AwAAAJktnRkAAAAAAXLz1AgI9xeBc3BTLZStzmuVu4U/ho8tA895TlJzZDej",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 46445764320,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 6673114
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
+      "offset": 0,
+      "length": 36,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231747
+          },
+          "value": {
+            "data": [
+              "AgAAADKAWUEc3EeOAeKJ5f+ilYng/dXz5frT/9QFGgJrwjuy",
+              "base64"
+            ],
+            "executable": true,
+            "lamports": 1141459,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 36
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "4Q8u2ny8YYgytJEncwZQfVWbd5axZtfgDxYKHehvPQR7",
+      "offset": 0,
+      "length": 45,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231750
+          },
+          "value": {
+            "data": [
+              "AwAAAD7bvBsAAAAAAQReCRkdRtdqqO2/G2LgeZcbZOl/cb294fa4YmCZiRAU",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 53268311040,
+            "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "rentEpoch": 18446744073709551615,
+            "space": 10485760
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF",
+      "offset": 0,
+      "length": 0,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231751
+          },
+          "value": {
+            "data": [
+              "",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 495636867,
+            "owner": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+            "rentEpoch": 18446744073709551615,
+            "space": 4664
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "8szGkuLTAux9XMgZ2vtY39jVSowEcpBfFfD8hXSEqdGC",
+      "offset": 0,
+      "length": 0,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231754
+          },
+          "value": {
+            "data": [
+              "",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 23280517,
+            "owner": "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
+            "rentEpoch": 18446744073709551615,
+            "space": 2616
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+      "offset": 0,
+      "length": 0,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231756
+          },
+          "value": {
+            "data": [
+              "",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 11891766013,
+            "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "rentEpoch": 18446744073709551615,
+            "space": 82
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb",
+      "offset": 0,
+      "length": 0,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231757
+          },
+          "value": {
+            "data": [
+              "",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 2719416388,
+            "owner": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+            "rentEpoch": 18446744073709551615,
+            "space": 611
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+      "offset": 0,
+      "length": 0,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231759
+          },
+          "value": {
+            "data": [
+              "",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 3826303234,
+            "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "rentEpoch": 18446744073709551615,
+            "space": 82
+          }
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "KLend2g3cP87fffoy8q1mQqGKjrL9jnmujyAASHa3tsF",
+      "offset": 0,
+      "length": 0,
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32602,
+          "message": "Invalid param: WrongSize"
+        },
+        "id": 1
+      }
+    },
+    {
+      "address": "MFv2hWf31Z9kbCa1snEPdcgp168vLLAZnkTHsMgGgAB",
+      "offset": 0,
+      "length": 0,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "context": {
+            "apiVersion": "4.4.0",
+            "slot": 468231761
+          },
+          "value": null
+        },
+        "id": 1
+      }
+    }
+  ]
+}

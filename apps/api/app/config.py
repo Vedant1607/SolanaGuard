@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     ANOMALY_DETECTOR_INTERVAL_SECONDS: int = Field(  # 15 min detector cadence
         default=900, gt=0
     )
+    # JSON-RPC endpoint for on-chain security reads. Empty => the public
+    # mainnet endpoint in DEBUG only; non-debug deployments must set a
+    # reliable provider here or the security collector stays idle.
+    SOLANA_RPC_URL: str = ""
+    SECURITY_COLLECTOR_ENABLED: bool = True
+    SECURITY_COLLECTOR_INTERVAL_SECONDS: int = Field(default=900, gt=0)  # 15 min
     RESEND_API_KEY: str = ""
     ALERT_FROM_EMAIL: str = "SolanaGuard Alerts <onboarding@resend.dev>"
     TELEGRAM_BOT_TOKEN: str = ""

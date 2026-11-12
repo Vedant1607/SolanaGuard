@@ -24,6 +24,7 @@ const CATEGORY_STYLES: Record<ProtocolCategory, string> = {
   DEX: "text-cyan-300",
   LENDING: "text-amber-300",
   LIQUID_STAKING: "text-violet-300",
+  PERPS: "text-rose-300",
 };
 
 const NOTICE_STYLES: Record<DataNotice["tone"], string> = {
