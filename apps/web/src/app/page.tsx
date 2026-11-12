@@ -6,7 +6,8 @@ import { getWatchedSlugs } from "@/lib/get-watched-slugs";
 import { WatchlistButton } from "@/components/WatchlistButton";
 import { getAppUser } from "@/lib/get-app-user";
 import { getSubscription } from "@/lib/get-subscription";
-import { FREE_PROTOCOL_LIMIT } from "@/lib/plan-limits";
+import { visibleProtocolCount } from "@/lib/plan-limits";
+import { DATA_UNAVAILABLE_LABEL, UNAVAILABLE_LABEL, protocolMetricLabels, sortByDataAvailability } from "@/lib/protocol-availability";
 import { RecentDetections, RecentDetectionsLoading } from "@/components/RecentDetections";
 import { assessFreshness, type DataNotice } from "@/lib/freshness";
 import { formatAbsoluteUtc, formatRelative } from "@/lib/time";
@@ -32,11 +33,6 @@ const NOTICE_STYLES: Record<DataNotice["tone"], string> = {
   info: "border-slate-700 bg-slate-800/40 text-slate-400",
 };
 
-function formatUsd(value: number | null): string {
-  if (value === null) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(value);
-}
-
 function formatCount(value: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
@@ -61,11 +57,12 @@ function LockedProtocolCard({ name, category }: { name: string; category: Protoc
 
 function ProtocolCard({ protocol, isAuthenticated, watched, now }: { protocol: Protocol; isAuthenticated: boolean; watched: boolean; now: number }) {
   const freshness = assessFreshness(protocol, now);
+  const labels = protocolMetricLabels(protocol);
   return <article className="rounded-2xl border border-slate-800 bg-slate-900/45 p-5 transition-colors hover:border-slate-700">
-    <div className="flex items-start justify-between gap-4"><div className="min-w-0"><h3 className="truncate font-semibold text-slate-100">{protocol.name}</h3><div className={`mt-1 text-xs font-medium ${CATEGORY_STYLES[protocol.category]}`}>{protocol.category.replace("_", " ")}</div></div><div className="flex shrink-0 flex-col items-end gap-2">{protocol.riskLevel && <span className={`rounded border px-2 py-0.5 text-[11px] font-bold tracking-wide ${RISK_STYLES[protocol.riskLevel]}`}>{protocol.riskLevel}</span>}{isAuthenticated && <WatchlistButton slug={protocol.slug} initialWatched={watched} />}</div></div>
+    <div className="flex items-start justify-between gap-4"><div className="min-w-0"><h3 className="truncate font-semibold text-slate-100">{protocol.name}</h3><div className={`mt-1 text-xs font-medium ${CATEGORY_STYLES[protocol.category]}`}>{protocol.category.replace("_", " ")}</div></div><div className="flex shrink-0 flex-col items-end gap-2">{labels.riskLevel ? <span className={`rounded border px-2 py-0.5 text-[11px] font-bold tracking-wide ${RISK_STYLES[labels.riskLevel]}`}>{labels.riskLevel}</span> : labels.dataUnavailable && <span className="rounded border border-slate-700 bg-slate-800/40 px-2 py-0.5 text-[11px] font-medium text-slate-400" title="SolanaGuard has no TVL or risk score for this protocol yet. Missing data is not treated as low risk.">{DATA_UNAVAILABLE_LABEL}</span>}{isAuthenticated && <WatchlistButton slug={protocol.slug} initialWatched={watched} />}</div></div>
     <div className="mt-5 grid grid-cols-3 gap-3 border-y border-slate-800/80 py-4 text-sm">
-      <div><div className="text-xs text-slate-500">TVL</div><div className="mt-1 font-semibold text-slate-100">{formatUsd(protocol.tvlUsd)}</div></div>
-      <div><div className="text-xs text-slate-500">Risk score</div><div className="mt-1 font-semibold text-slate-100">{protocol.overallScore !== null ? `${protocol.overallScore}/100` : "—"}</div></div>
+      <div><div className="text-xs text-slate-500">TVL</div>{labels.tvl === UNAVAILABLE_LABEL ? <div className="mt-1 font-medium text-slate-500" title="No TVL has been recorded for this protocol. It is not zero.">{UNAVAILABLE_LABEL}</div> : <div className="mt-1 font-semibold text-slate-100">{labels.tvl}</div>}</div>
+      <div><div className="text-xs text-slate-500">Risk score</div>{labels.riskScore === UNAVAILABLE_LABEL ? <div className="mt-1 font-medium text-slate-500" title="No risk score has been computed for this protocol. Missing data is not treated as low risk.">{UNAVAILABLE_LABEL}</div> : <div className="mt-1 font-semibold text-slate-100">{labels.riskScore}</div>}</div>
       <div><div className="text-xs text-slate-500">24h txns</div>{protocol.txCount24h === null ? <div className="mt-1 font-medium text-slate-500" title="The on-chain transaction count could not be retrieved for this snapshot. It is not zero.">Unavailable</div> : <div className="mt-1 font-semibold text-slate-100">{formatCount(protocol.txCount24h)}</div>}</div>
     </div>
     {protocol.explanation && <p className="mt-4 text-sm leading-6 text-slate-400">{protocol.explanation}</p>}
@@ -92,12 +89,14 @@ export default async function DashboardPage() {
     orFallback("user lookup", getAppUser, null),
     orFallback("subscription lookup", getSubscription, { plan: "FREE" as const }),
   ]);
-  const protocols = protocolsResult.data;
+  // Data-backed protocols first so a limited plan's open slots go to protocols
+  // with something to show; the API's alphabetical order breaks ties.
+  const protocols = sortByDataAvailability(protocolsResult.data);
   // Request time for freshness labels; the page is force-dynamic, so reading
   // the clock once per server render is intended.
   // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
-  const visibleCount = plan === "PRO" ? protocols.length : FREE_PROTOCOL_LIMIT;
+  const visibleCount = visibleProtocolCount(plan, protocols.length);
   const isLimited = visibleCount < protocols.length;
   const elevated = protocols.filter((protocol) => protocol.riskLevel === "HIGH" || protocol.riskLevel === "CRITICAL");
   const elevatedOnStaleBaseline = elevated.filter((protocol) => assessFreshness(protocol, now).staleBaseline).length;
