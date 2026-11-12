@@ -69,6 +69,7 @@ app.add_middleware(
 
 app.include_router(protocols.router, prefix="/api/v1/protocols", tags=["Protocols"])
 app.include_router(security.router, prefix="/api/v1/protocols", tags=["Protocols"])
+app.include_router(security.status_router, prefix="/api/v1/security", tags=["Security"])
 app.include_router(anomalies.router, prefix="/api/v1/anomalies", tags=["Anomalies"])
 app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["Telegram"])
 

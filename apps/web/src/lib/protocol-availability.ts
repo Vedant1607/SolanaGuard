@@ -60,3 +60,27 @@ export function sortByDataAvailability<T extends Protocol>(protocols: readonly T
     .sort((a, b) => a.rank - b.rank || a.index - b.index)
     .map(({ protocol }) => protocol);
 }
+
+/**
+ * Which ingestion sources actually back a protocol's activity data, judged
+ * from what the API returned (TVL ingestion uses DefiLlama; 24-hour
+ * transaction counts use Helius). A source is named only when its value is
+ * present; a protocol with no snapshot at all claims no source.
+ */
+export function activitySourceText(protocol: Pick<Protocol, "tvlUsd" | "txCount24h" | "snapshotAt">): string {
+  if (protocol.snapshotAt === null && !hasTvl(protocol) && protocol.txCount24h === null) {
+    return "No TVL or transaction data has been ingested for this protocol.";
+  }
+  const tvl = hasTvl(protocol) ? "TVL from DefiLlama" : "TVL unavailable";
+  const tx = protocol.txCount24h !== null ? "24h transactions from Helius" : "24h transactions unavailable in the latest snapshot";
+  return `${tvl} · ${tx}`;
+}
+
+/**
+ * Slugs a plan may open, given its card allowance (``visibleProtocolCount``).
+ * The dashboard grid and the protocol detail page both use this, so a locked
+ * protocol cannot be opened by URL.
+ */
+export function openProtocolSlugs(protocols: readonly Protocol[], visibleCount: number): Set<string> {
+  return new Set(sortByDataAvailability(protocols).slice(0, Math.max(0, visibleCount)).map((p) => p.slug));
+}

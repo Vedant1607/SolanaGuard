@@ -132,3 +132,22 @@ test("available metrics are shown as reported", () => {
 test("partially available protocols are not flagged as having no data", () => {
   assert.equal(protocolMetricLabels(protocol("p", { tvlUsd: null })).dataUnavailable, false);
 });
+
+test("activity sources name only what actually backs the data", async () => {
+  const { activitySourceText } = await import("./protocol-availability.ts");
+  // Drift-like: catalogued for security only, never ingested — no source is claimed.
+  const none = activitySourceText({ tvlUsd: null, txCount24h: null, snapshotAt: null });
+  assert.equal(none, "No TVL or transaction data has been ingested for this protocol.");
+  assert.doesNotMatch(none, /Helius|DefiLlama/);
+  // TVL ingested, transaction count unavailable (e.g. over the signature cap).
+  assert.equal(
+    activitySourceText({ tvlUsd: 942_682_378, txCount24h: null, snapshotAt: "2026-11-12T08:56:18" }),
+    "TVL from DefiLlama · 24h transactions unavailable in the latest snapshot",
+  );
+  assert.equal(
+    activitySourceText({ tvlUsd: 848_450_017, txCount24h: 8859, snapshotAt: "2026-11-12T08:56:41" }),
+    "TVL from DefiLlama · 24h transactions from Helius",
+  );
+  // A snapshot without TVL does not claim DefiLlama.
+  assert.match(activitySourceText({ tvlUsd: null, txCount24h: 12, snapshotAt: "2026-11-12T08:56:41" }), /^TVL unavailable · 24h transactions from Helius$/);
+});

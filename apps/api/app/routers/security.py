@@ -15,9 +15,12 @@ import asyncpg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.adapters.onchain_security import OnchainSecurityAdapter
 from app.db import get_pool
 from app.risk.evidence import DimensionAssessment, Evidence, ObservationRecord
 from app.risk.security_assessment import evaluate_protocol_security
+from app.risk.security_rules import STALE_AFTER
+from app.tasks.security_collector import collector_status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -170,3 +173,60 @@ async def get_protocol_security(slug: str) -> SecurityResponse:
         logger.warning("Security endpoint unavailable: Phase 1 migrations are not applied")
         raise HTTPException(status_code=503, detail="Security data is not available yet") from None
     return build_response(protocol, assessment, address_rows, now)
+
+
+# --- Collector status: GET /api/v1/security/collector-status ----------------
+
+status_router = APIRouter()
+
+LATEST_BATCHES_QUERY = """
+    WITH latest AS (
+        SELECT "protocolId", max("collectedAt") AS at
+        FROM metric_observations WHERE "adapterKey" = $1
+        GROUP BY "protocolId"
+    )
+    SELECT p.slug, p."isActive" AS is_active, l.at AS last_collected_at,
+           count(o.id) FILTER (WHERE o.status = 'OK') AS ok,
+           count(o.id) FILTER (WHERE o.status = 'MISSING') AS missing,
+           count(o.id) FILTER (WHERE o.status = 'STALE') AS stale,
+           count(o.id) FILTER (WHERE o.status = 'ERROR') AS error,
+           array_remove(array_agg(DISTINCT o."errorCode"), NULL) AS error_codes
+    FROM protocols p
+    LEFT JOIN latest l ON l."protocolId" = p.id
+    LEFT JOIN metric_observations o
+           ON o."protocolId" = p.id AND o."collectedAt" = l.at AND o."adapterKey" = $1
+    GROUP BY p.slug, p."isActive", l.at
+    ORDER BY p.slug
+"""
+
+
+@status_router.get("/collector-status")
+async def get_collector_status() -> dict:
+    """Heartbeat of this instance's collector plus the latest stored batch per
+    protocol (shared across instances). Never includes the RPC URL or key."""
+    now = datetime.now(timezone.utc)
+    protocols: list[dict] | None = None
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(LATEST_BATCHES_QUERY, OnchainSecurityAdapter.key)
+        protocols = []
+        for row in rows:
+            at = _utc(row["last_collected_at"])
+            protocols.append({
+                "slug": row["slug"],
+                "is_active": row["is_active"],
+                "last_collected_at": at,
+                "fresh": at is not None and now - at <= STALE_AFTER,
+                "latest_batch": {"ok": row["ok"], "missing": row["missing"], "stale": row["stale"], "error": row["error"]},
+                "error_codes": list(row["error_codes"]),
+            })
+    except (asyncpg.exceptions.UndefinedTableError, asyncpg.exceptions.UndefinedObjectError):
+        protocols = None
+    return {
+        "evaluated_at": now,
+        "adapter": f"{OnchainSecurityAdapter.key}@{OnchainSecurityAdapter.version}",
+        "stale_after_seconds": int(STALE_AFTER.total_seconds()),
+        "instance": collector_status(),
+        "protocols": protocols,
+    }
