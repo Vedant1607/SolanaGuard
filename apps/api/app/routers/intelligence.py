@@ -11,7 +11,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 
 import asyncpg
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.adapters.defillama_history import ADAPTER_KEY, ADAPTER_VERSION, METRIC_TVL_DAILY, SOURCE
@@ -24,6 +24,10 @@ router = APIRouter()
 # Enough calendar days for MIN_HISTORY_DAYS observations before the latest day
 # plus the trailing baseline, with margin for source gaps.
 LOOKBACK_DAYS = 400
+# Optional per-day history (``?history_days=N``). Capped so the earliest
+# history day still has a full baseline inside LOOKBACK_DAYS; the scores are
+# the ones already computed for the latest day, nothing extra is persisted.
+MAX_HISTORY_DAYS = 180
 
 PROTOCOL_QUERY = 'SELECT id, slug, name, "isActive" AS is_active FROM protocols WHERE slug = $1'
 
@@ -63,6 +67,26 @@ class MarketContext(BaseModel):
     market_wide: bool | None
 
 
+class HistoryDay(BaseModel):
+    """One stored closed day. Calendar days without an observation are not listed."""
+
+    day: date
+    observation_id: str
+    excess_log_return: float | None
+    daily_log_return: float | None
+    peer_median_return: float | None
+    robust_z: float | None
+    unusual: bool  # |robust_z| >= threshold; False when unscored
+    market_wide: bool | None
+    reasons: list[str]  # why robust_z is None, if it is
+
+
+class HistoryWindow(BaseModel):
+    start: date  # first calendar day covered (inclusive)
+    end: date  # last closed UTC day (yesterday, inclusive)
+    days: int
+
+
 class IntelligenceResponse(BaseModel):
     protocol: dict
     model: dict
@@ -83,13 +107,15 @@ class IntelligenceResponse(BaseModel):
     explanation: list[str]
     insufficient_reasons: list[dict]
     disclaimer: str
+    history_window: HistoryWindow | None = None
+    history: list[HistoryDay] = []
 
 
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
-def build_response(protocol, rows, now: datetime) -> IntelligenceResponse:
+def build_response(protocol, rows, now: datetime, history_days: int = 0) -> IntelligenceResponse:
     series: dict[str, list[model.DailyObservation]] = {}
     by_id = {}
     for row in rows:
@@ -110,6 +136,22 @@ def build_response(protocol, rows, now: datetime) -> IntelligenceResponse:
                 supporting.append(SupportingObservation(
                     id=obs_id, role=role, day=row["observed_at"].date(), value_usd=float(row["value"]),
                     source_observed_at=_utc(row["observed_at"]), collected_at=_utc(row["collected_at"]),
+                ))
+
+    window = None
+    history: list[HistoryDay] = []
+    if history_days > 0:
+        end = today - timedelta(days=1)
+        start = end - timedelta(days=history_days - 1)
+        window = HistoryWindow(start=start, end=end, days=history_days)
+        for s in scores:
+            if start <= s.day <= end:
+                market_wide = None if s.market_z is None else abs(s.market_z) >= model.THRESHOLD
+                history.append(HistoryDay(
+                    day=s.day, observation_id=s.observation_id, excess_log_return=s.excess_return,
+                    daily_log_return=s.log_return, peer_median_return=s.peer_return, robust_z=s.robust_z,
+                    unusual=s.robust_z is not None and abs(s.robust_z) >= model.THRESHOLD,
+                    market_wide=market_wide, reasons=list(s.reasons),
                 ))
 
     baseline_end = latest.day - timedelta(days=1) if latest else None
@@ -145,11 +187,16 @@ def build_response(protocol, rows, now: datetime) -> IntelligenceResponse:
         explanation=model.explain(latest) if latest and latest.robust_z is not None else [],
         insufficient_reasons=[{"code": code, "detail": model.REASON_TEXT.get(code, code)} for code in reasons],
         disclaimer=model.DISCLAIMER,
+        history_window=window,
+        history=history,
     )
 
 
 @router.get("/{slug}/intelligence", response_model=IntelligenceResponse)
-async def get_protocol_intelligence(slug: str) -> IntelligenceResponse:
+async def get_protocol_intelligence(
+    slug: str,
+    history_days: int = Query(0, ge=0, le=MAX_HISTORY_DAYS, description="Include per-day scores for this many closed days"),
+) -> IntelligenceResponse:
     now = datetime.now(timezone.utc)
     since = datetime.combine(now.date() - timedelta(days=LOOKBACK_DAYS), datetime.min.time())
     try:
@@ -162,4 +209,4 @@ async def get_protocol_intelligence(slug: str) -> IntelligenceResponse:
     except (asyncpg.exceptions.UndefinedTableError, asyncpg.exceptions.UndefinedColumnError):
         logger.warning("Intelligence endpoint unavailable: Phase 1 migrations are not applied")
         raise HTTPException(status_code=503, detail="Intelligence data is not available yet") from None
-    return build_response(protocol, rows, now)
+    return build_response(protocol, rows, now, history_days)

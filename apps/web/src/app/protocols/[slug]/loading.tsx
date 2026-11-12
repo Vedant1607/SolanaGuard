@@ -4,6 +4,6 @@ export default function Loading() {
     <div className="mt-6 h-8 w-56 animate-pulse rounded bg-slate-800" />
     <div className="mt-6 h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/40" />
     <div className="mt-6 h-64 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/40" />
-    <p className="sr-only">Loading security evidence…</p>
+    <p className="sr-only">Loading security evidence and TVL behaviour…</p>
   </div></main>;
 }

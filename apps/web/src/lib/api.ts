@@ -1,3 +1,5 @@
+import { loadIntelligence, type IntelligenceResult } from "./intelligence-view";
+
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type ProtocolCategory = "DEX" | "LENDING" | "LIQUID_STAKING" | "PERPS";
 export type AnomalyType = "LIQUIDITY_WITHDRAWAL" | "TX_SPIKE" | "TVL_DECLINE" | "WHALE_MOVEMENT" | "PRICE_DEVIATION" | "RUG_PULL_SIGNAL";
@@ -155,4 +157,20 @@ export async function fetchCollectorStatus(): Promise<CollectorStatus | null> {
   } catch {
     return null;
   }
+}
+
+// --- TVL behaviour intelligence (GET /api/v1/protocols/{slug}/intelligence) --
+// tvl-robust-v1: unusualness of a protocol's daily TVL change relative to its
+// own history and its peers. Separate from both the security assessment and
+// the activity score; it is not a probability of an exploit or loss.
+
+export type { IntelligenceReport, IntelligenceResult } from "./intelligence-view";
+
+/**
+ * Never throws. Timeouts, HTTP errors and malformed bodies are reported as a
+ * reason, never as a classification. ``historyDays`` (max 180) adds per-day
+ * scores for the chart in the same request.
+ */
+export function fetchProtocolIntelligence(slug: string, { historyDays = 0 }: { historyDays?: number } = {}): Promise<IntelligenceResult> {
+  return loadIntelligence(fetch, `${process.env.API_URL}/api/v1/protocols/${encodeURIComponent(slug)}/intelligence`, historyDays);
 }

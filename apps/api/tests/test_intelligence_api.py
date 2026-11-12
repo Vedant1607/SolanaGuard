@@ -68,13 +68,13 @@ class FakePool:
         return Ctx()
 
 
-def call(conn, slug="p0"):
+def call(conn, slug="p0", query=""):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/protocols")
     async def pool():
         return FakePool(conn)
     with patch.object(intelligence, "get_pool", pool):
-        return TestClient(app).get(f"/api/v1/protocols/{slug}/intelligence")
+        return TestClient(app).get(f"/api/v1/protocols/{slug}/intelligence{query}")
 
 
 PROTOCOL = {"id": "p0", "slug": "p0", "name": "P0", "is_active": True}
@@ -139,6 +139,51 @@ class IntelligenceApiTests(unittest.TestCase):
     def test_missing_schema_is_503(self):
         res = call(FakeConnection(PROTOCOL, [], error=asyncpg.exceptions.UndefinedTableError("x")))
         self.assertEqual(res.status_code, 503)
+
+
+class IntelligenceHistoryTests(unittest.TestCase):
+    def test_history_is_opt_in_and_the_default_response_is_unchanged(self):
+        body = call(FakeConnection(PROTOCOL, rows_from(synthetic_market(days=200), TODAY - timedelta(days=1)))).json()
+        self.assertEqual(body["history"], [])
+        self.assertIsNone(body["history_window"])
+
+    def test_history_lists_stored_days_only_with_the_same_scores_as_the_model(self):
+        end = TODAY - timedelta(days=1)
+        series = synthetic_market(days=300, shocks={("p0", 290): -0.35}, skip={"p0": {280, 281}})
+        rows = rows_from(series, end)
+        body = call(FakeConnection(PROTOCOL, rows), query="?history_days=30").json()
+        window = body["history_window"]
+        self.assertEqual((window["start"], window["end"], window["days"]),
+                         ((end - timedelta(days=29)).isoformat(), end.isoformat(), 30))
+        days = [h["day"] for h in body["history"]]
+        self.assertEqual(len(days), 28)  # 30 calendar days, 2 missing at source: not listed, not filled
+        self.assertEqual(days, sorted(days))
+        missing = {(end - timedelta(days=299 - t)).isoformat() for t in (280, 281)}
+        self.assertFalse(missing & set(days))
+        after_gap = next(h for h in body["history"] if h["day"] == (end - timedelta(days=299 - 282)).isoformat())
+        self.assertIsNone(after_gap["excess_log_return"])
+        self.assertIn("previous_day_missing", after_gap["reasons"])
+        self.assertFalse(after_gap["unusual"])
+
+        shocked = next(h for h in body["history"] if h["day"] == (end - timedelta(days=9)).isoformat())
+        self.assertTrue(shocked["unusual"])
+        self.assertLessEqual(shocked["robust_z"], -tvl_robust.THRESHOLD)
+        self.assertEqual(shocked["observation_id"], f"p0:{shocked['day']}")
+
+        # Same numbers as the model run directly on the same observations.
+        shifted = {slug: [tvl_robust.DailyObservation(r["observed_at"].date(), float(r["value"]), r["id"])
+                          for r in rows if r["slug"] == slug] for slug in series}
+        direct = {s.day.isoformat(): s for s in tvl_robust.compute_scores(shifted)["p0"]}
+        for h in body["history"]:
+            self.assertEqual(h["robust_z"], direct[h["day"]].robust_z)
+            self.assertEqual(h["excess_log_return"], direct[h["day"]].excess_return)
+            self.assertEqual(h["unusual"], direct[h["day"]].robust_z is not None and abs(direct[h["day"]].robust_z) >= tvl_robust.THRESHOLD)
+
+    def test_history_days_is_bounded(self):
+        conn = FakeConnection(PROTOCOL, [])
+        self.assertEqual(call(conn, query=f"?history_days={intelligence.MAX_HISTORY_DAYS + 1}").status_code, 422)
+        self.assertEqual(call(conn, query="?history_days=-1").status_code, 422)
+        self.assertEqual(call(conn, query=f"?history_days={intelligence.MAX_HISTORY_DAYS}").status_code, 200)
 
 
 if __name__ == "__main__":

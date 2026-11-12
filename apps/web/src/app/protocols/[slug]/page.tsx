@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound, unstable_rethrow } from "next/navigation";
-import { fetchProtocolSecurity, fetchProtocols, type Protocol, type RegistryAddress, type SecurityEvidence, type SecurityObservation } from "@/lib/api";
+import { fetchProtocolIntelligence, fetchProtocolSecurity, fetchProtocols, type Protocol, type RegistryAddress, type SecurityEvidence, type SecurityObservation } from "@/lib/api";
 import { getSubscription } from "@/lib/get-subscription";
 import { visibleProtocolCount } from "@/lib/plan-limits";
 import { activitySourceText, openProtocolSlugs, protocolMetricLabels } from "@/lib/protocol-availability";
 import { RULE_CONTEXT, explorerUrl, ruleTitle, shortKey, sortEvidence, summarizeSecurity } from "@/lib/security-view";
 import { formatAbsoluteUtc, formatRelative, parseApiTimestamp } from "@/lib/time";
 import { LevelBadge, SupportBadge } from "@/components/SecurityBadges";
+import { IntelligencePanel } from "@/components/Intelligence";
 
 export const dynamic = "force-dynamic";
 
@@ -76,10 +77,11 @@ export default async function ProtocolSecurityPage({ params }: { params: Promise
   const protocol = protocols.find((p) => p.slug === slug);
   if (!protocol) notFound();
   if (!openProtocolSlugs(protocols, visibleProtocolCount(plan, protocols.length)).has(slug)) {
-    return <Shell><h1 className="mt-4 text-2xl font-semibold text-white">{protocol.name}</h1><Notice title="Available on Pro">Security evidence for this protocol is available on the Pro plan. <Link href="/pricing" className="font-medium text-cyan-300 hover:text-cyan-200">View plans →</Link></Notice></Shell>;
+    return <Shell><h1 className="mt-4 text-2xl font-semibold text-white">{protocol.name}</h1><Notice title="Available on Pro">Security evidence and TVL behaviour intelligence for this protocol is available on the Pro plan. <Link href="/pricing" className="font-medium text-cyan-300 hover:text-cyan-200">View plans →</Link></Notice></Shell>;
   }
 
-  const security = await fetchProtocolSecurity(slug);
+  // Both assessments in parallel; the intelligence request carries the 180-day chart history.
+  const [security, intelligenceResult] = await Promise.all([fetchProtocolSecurity(slug), fetchProtocolIntelligence(slug, { historyDays: 180 })]);
   // eslint-disable-next-line react-hooks/purity -- force-dynamic page: one clock read per request
   const now = Date.now();
   const labels = protocolMetricLabels(protocol);
@@ -90,8 +92,10 @@ export default async function ProtocolSecurityPage({ params }: { params: Promise
     {protocol.explanation && <p className="mt-3 text-xs text-slate-500">Latest: {protocol.explanation}</p>}
   </section>;
 
+  const intelligence = <IntelligencePanel result={intelligenceResult} now={now} />;
+
   if (!security.ok) {
-    return <Shell><h1 className="mt-4 text-2xl font-semibold text-white">{protocol.name}</h1><Notice title="Security assessment unavailable">{security.reason === "not_ready" ? "The security registry has not been set up on this server yet." : "The security assessment could not be loaded. No security level is shown until it can be."}</Notice>{activity}</Shell>;
+    return <Shell><h1 className="mt-4 text-2xl font-semibold text-white">{protocol.name}</h1><Notice title="Security assessment unavailable">{security.reason === "not_ready" ? "The security registry has not been set up on this server yet." : "The security assessment could not be loaded. No security level is shown until it can be."}</Notice>{intelligence}{activity}</Shell>;
   }
 
   const data = security.data;
@@ -122,6 +126,8 @@ export default async function ProtocolSecurityPage({ params }: { params: Promise
       {summary.unknown.length > 0 && <div className="mt-4"><h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">What remains unknown</h3><ul className="mt-2 space-y-1 text-sm text-slate-400">{summary.unknown.map((e, i) => <li key={`${e.rule_id}-${e.address_id}-${i}`}>• <span className="text-slate-300">{ruleTitle(e.rule_id)}</span>{e.address_label ? ` on ${e.address_label}` : ""}: {e.explanation.replace(/^Could not verify: /, "")}</li>)}</ul></div>}
       {data.protocol.support_level !== "FULL" && <p className="mt-4 text-xs leading-5 text-slate-500">Partial coverage: SolanaGuard currently checks on-chain program and account security only. Protocol-specific metrics (market reserves, pool liquidity, collateral health) are not collected for this protocol.</p>}
     </section>
+
+    {intelligence}
 
     <section className="mt-6"><h2 className="font-semibold text-white">Evidence by monitored address</h2>
       {data.addresses.length === 0 ? <p className="mt-3 text-sm text-slate-500">No active addresses are registered for this protocol.</p> :

@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { fetchCollectorStatus, fetchProtocolSecurity, fetchProtocols, type CollectorStatus, type Protocol, type ProtocolCategory, type RiskLevel, type SecurityLevel, type SecurityResult } from "@/lib/api";
+import { fetchCollectorStatus, fetchProtocolIntelligence, fetchProtocolSecurity, fetchProtocols, type CollectorStatus, type IntelligenceResult, type Protocol, type ProtocolCategory, type RiskLevel, type SecurityLevel, type SecurityResult } from "@/lib/api";
 import { getWatchedSlugs } from "@/lib/get-watched-slugs";
 import { WatchlistButton } from "@/components/WatchlistButton";
 import { getAppUser } from "@/lib/get-app-user";
@@ -11,6 +11,7 @@ import { visibleProtocolCount } from "@/lib/plan-limits";
 import { DATA_UNAVAILABLE_LABEL, UNAVAILABLE_LABEL, openProtocolSlugs, protocolMetricLabels, sortByDataAvailability } from "@/lib/protocol-availability";
 import { summarizeSecurity } from "@/lib/security-view";
 import { LevelBadge, SupportBadge } from "@/components/SecurityBadges";
+import { IntelligenceCardSection } from "@/components/Intelligence";
 import { RecentDetections, RecentDetectionsLoading } from "@/components/RecentDetections";
 import { assessFreshness, type DataNotice } from "@/lib/freshness";
 import { formatAbsoluteUtc, formatRelative, parseApiTimestamp } from "@/lib/time";
@@ -114,7 +115,7 @@ function SecurityOverview({ status, securityBySlug, now }: { status: CollectorSt
   </div>;
 }
 
-function ProtocolCard({ protocol, security, isAuthenticated, watched, now }: { protocol: Protocol; security: SecurityResult; isAuthenticated: boolean; watched: boolean; now: number }) {
+function ProtocolCard({ protocol, security, intelligence, isAuthenticated, watched, now }: { protocol: Protocol; security: SecurityResult; intelligence: IntelligenceResult; isAuthenticated: boolean; watched: boolean; now: number }) {
   const freshness = assessFreshness(protocol, now);
   const labels = protocolMetricLabels(protocol);
   return <article className="rounded-2xl border border-slate-800 bg-slate-900/45 p-5 transition-colors hover:border-slate-700">
@@ -126,6 +127,7 @@ function ProtocolCard({ protocol, security, isAuthenticated, watched, now }: { p
     </div>
     {protocol.explanation && <p className="mt-4 text-sm leading-6 text-slate-400"><span className="text-slate-500">Activity: </span>{protocol.explanation}</p>}
     <SecuritySection slug={protocol.slug} security={security} now={now} />
+    <IntelligenceCardSection result={intelligence} now={now} />
     {freshness.notices.length > 0 && <ul className="mt-4 space-y-2">{freshness.notices.map((notice) => <li key={notice.text} className={`rounded-lg border px-3 py-2 text-xs leading-5 ${NOTICE_STYLES[notice.tone]}`}>{notice.text}</li>)}</ul>}
     <div className="mt-4 space-y-1 text-xs text-slate-600">
       <div title={formatAbsoluteUtc(freshness.snapshotAt)}>Telemetry updated {freshness.snapshotAt ? formatRelative(freshness.snapshotAt, now) : "— never"}</div>
@@ -160,7 +162,15 @@ export default async function DashboardPage() {
   const isLimited = visibleCount < protocols.length;
   const openSlugs = openProtocolSlugs(protocols, visibleCount);
   const collectorStatusPromise = fetchCollectorStatus();
-  const securityBySlug = new Map(await Promise.all(protocols.filter((p) => openSlugs.has(p.slug)).map(async (p) => [p.slug, await fetchProtocolSecurity(p.slug)] as const)));
+  // One request per open card for each assessment, all in parallel; locked
+  // (Pro-only) cards fetch nothing. Intelligence omits history on the cards.
+  const openProtocols = protocols.filter((p) => openSlugs.has(p.slug));
+  const [securityEntries, intelligenceEntries] = await Promise.all([
+    Promise.all(openProtocols.map(async (p) => [p.slug, await fetchProtocolSecurity(p.slug)] as const)),
+    Promise.all(openProtocols.map(async (p) => [p.slug, await fetchProtocolIntelligence(p.slug)] as const)),
+  ]);
+  const securityBySlug = new Map(securityEntries);
+  const intelligenceBySlug = new Map(intelligenceEntries);
   const elevated = protocols.filter((protocol) => protocol.riskLevel === "HIGH" || protocol.riskLevel === "CRITICAL");
   const elevatedOnStaleBaseline = elevated.filter((protocol) => assessFreshness(protocol, now).staleBaseline).length;
   const latestSnapshot = protocols.map((protocol) => assessFreshness(protocol, now).snapshotAt).filter((date): date is Date => date !== null).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
@@ -185,7 +195,7 @@ export default async function DashboardPage() {
 
       {isLimited && <div className="mt-6 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.04] px-4 py-3 text-sm text-slate-400">Showing {visibleCount} of {protocols.length} protocols on the Free plan — <a href="/pricing" className="font-medium text-cyan-300 hover:text-cyan-200">upgrade to Pro</a> to access all protocol cards.</div>}
 
-      <section aria-labelledby="protocols" className="mt-8"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Protocol telemetry</p><h2 id="protocols" className="mt-1 text-xl font-semibold text-white">Monitored protocols</h2></div>{protocols.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/30 px-5 py-8 text-center text-sm text-slate-500">No active protocols are configured.</div> : <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{protocols.map((protocol) => openSlugs.has(protocol.slug) ? <ProtocolCard key={protocol.slug} protocol={protocol} security={securityBySlug.get(protocol.slug) ?? { ok: false, reason: "unavailable" }} isAuthenticated={isAuthenticated} watched={watchedSlugs.has(protocol.slug)} now={now} /> : <LockedProtocolCard key={protocol.slug} name={protocol.name} category={protocol.category} />)}</div>}</section>
+      <section aria-labelledby="protocols" className="mt-8"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Protocol telemetry</p><h2 id="protocols" className="mt-1 text-xl font-semibold text-white">Monitored protocols</h2></div>{protocols.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/30 px-5 py-8 text-center text-sm text-slate-500">No active protocols are configured.</div> : <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{protocols.map((protocol) => openSlugs.has(protocol.slug) ? <ProtocolCard key={protocol.slug} protocol={protocol} security={securityBySlug.get(protocol.slug) ?? { ok: false, reason: "unavailable" }} intelligence={intelligenceBySlug.get(protocol.slug) ?? { ok: false, reason: "unavailable" }} isAuthenticated={isAuthenticated} watched={watchedSlugs.has(protocol.slug)} now={now} /> : <LockedProtocolCard key={protocol.slug} name={protocol.name} category={protocol.category} />)}</div>}</section>
       </>}
       <div className="mt-8 pb-6"><Suspense fallback={<RecentDetectionsLoading />}><RecentDetections /></Suspense></div>
     </div>
