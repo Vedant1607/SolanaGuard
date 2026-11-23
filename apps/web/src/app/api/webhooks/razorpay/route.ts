@@ -1,67 +1,20 @@
-import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { db } from "@solanaguard/database";
+import { handleRazorpayWebhook } from "@/lib/billing-core";
+import { prismaBillingWebhookStore } from "@/lib/billing-store";
+
+// node:crypto (HMAC, timingSafeEqual) and Prisma require the Node.js runtime.
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    return NextResponse.json({ error: "Billing webhooks are not configured" }, { status: 503 });
-  }
-
-  const body = await req.text();
-  const signature = req.headers.get("x-razorpay-signature");
-
-  const expectedSignature = crypto
-    .createHmac("sha256", webhookSecret)
-    .update(body)
-    .digest("hex");
-
-  if (signature !== expectedSignature) {
-    return new NextResponse("Invalid webhook signature", { status: 400 });
-  }
-
-  const event = JSON.parse(body);
-  const subscriptionEntity = event.payload?.subscription?.entity;
-  if (!subscriptionEntity) return NextResponse.json({ received: true });
-
-  const userId = subscriptionEntity.notes?.userId;
-  if (!userId) return NextResponse.json({ received: true });
-
-  switch (event.event) {
-    case "subscription.activated":
-    case "subscription.charged": {
-      await db.subscription.upsert({
-        where: { userId },
-        create: {
-          userId,
-          razorpaySubscriptionId: subscriptionEntity.id,
-          plan: "PRO",
-          status: subscriptionEntity.status,
-          currentPeriodEnd: subscriptionEntity.current_end
-            ? new Date(subscriptionEntity.current_end * 1000)
-            : null,
-        },
-        update: {
-          razorpaySubscriptionId: subscriptionEntity.id,
-          plan: "PRO",
-          status: subscriptionEntity.status,
-          currentPeriodEnd: subscriptionEntity.current_end
-            ? new Date(subscriptionEntity.current_end * 1000)
-            : null,
-        },
-      });
-      break;
-    }
-    case "subscription.cancelled":
-    case "subscription.completed":
-    case "subscription.halted": {
-      await db.subscription.updateMany({
-        where: { razorpaySubscriptionId: subscriptionEntity.id },
-        data: { plan: "FREE", status: subscriptionEntity.status },
-      });
-      break;
-    }
-  }
-
-  return NextResponse.json({ received: true });
+  // Exact received bytes: the signature is verified over these, never over a
+  // decoded or re-serialized body.
+  const rawBody = new Uint8Array(await req.arrayBuffer());
+  const result = await handleRazorpayWebhook({
+    rawBody,
+    headers: req.headers,
+    secret: process.env.RAZORPAY_WEBHOOK_SECRET,
+    store: prismaBillingWebhookStore(db),
+  });
+  return NextResponse.json(result.body, { status: result.status });
 }
