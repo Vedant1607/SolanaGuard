@@ -198,12 +198,34 @@ model User {
   email          String          @unique
   createdAt      DateTime        @default(now())
   watchlistItems WatchlistItem[]
-  telegramChatId String?
+  // Telegram private chat that receives alerts. Unique: one chat belongs to at
+  // most one account, so a link can never silently move a chat between users.
+  telegramChatId     String?             @unique
   subscription Subscription?
+  telegramLinkTokens TelegramLinkToken[]
   retiredBillingSubscriptions RetiredBillingSubscription[]
   billingWebhookEvents        BillingWebhookEvent[]
 
   @@map("users")
+}
+
+// Single-use, short-lived token behind a Telegram deep link (t.me/<bot>?start=<token>).
+// Only the SHA-256 hex digest is stored; the plaintext token is shown once to the
+// signed-in user. A token is usable while consumedAt and revokedAt are null and
+// expiresAt is in the future. Issuing a new token revokes the user's unused ones.
+model TelegramLinkToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("telegram_link_tokens")
 }
 
 model WatchlistItem {

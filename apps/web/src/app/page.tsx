@@ -5,6 +5,8 @@ import { auth } from "@clerk/nextjs/server";
 import { fetchCollectorStatus, fetchHistoryRefreshStatus, fetchProtocolIntelligence, fetchProtocolSecurity, fetchProtocols, type CollectorStatus, type IntelligenceResult, type Protocol, type ProtocolCategory, type RiskLevel, type SecurityLevel, type SecurityResult } from "@/lib/api";
 import { getWatchedSlugs } from "@/lib/get-watched-slugs";
 import { WatchlistButton } from "@/components/WatchlistButton";
+import { TelegramConnect } from "@/components/TelegramConnect";
+import { normalizeBotUsername } from "@/lib/telegram-link-core";
 import { getAppUser } from "@/lib/get-app-user";
 import { getSubscription } from "@/lib/get-subscription";
 import { visibleProtocolCount } from "@/lib/plan-limits";
@@ -192,8 +194,8 @@ export default async function DashboardPage() {
   const latestSnapshot = protocols.map((protocol) => assessFreshness(protocol, now).snapshotAt).filter((date): date is Date => date !== null).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
   const collectorStatus = await collectorStatusPromise;
   const historyView = describeHistory(await historyStatusPromise, now);
-  const telegramBot = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
-  const telegramLink = telegramBot && appUser?.id ? `https://t.me/${encodeURIComponent(telegramBot)}?start=${encodeURIComponent(appUser.id)}` : null;
+  // Links are single-use tokens issued on click (TelegramConnect); no identifier is put in the page.
+  const telegramConfigured = normalizeBotUsername(process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME) !== null;
 
   return <main className="min-h-screen bg-slate-950 text-slate-200">
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -201,7 +203,7 @@ export default async function DashboardPage() {
         <div className="absolute -right-24 -top-32 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300"><span className="h-2 w-2 rounded-full bg-cyan-300" /> Security monitoring</div><h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">SolanaGuard command center</h1><p className="mt-3 text-sm leading-6 text-slate-400 sm:text-base">Protocol risk telemetry and persisted anomaly detections for the Solana ecosystem.</p></div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">{isAuthenticated && (appUser?.telegramChatId ? <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 font-medium text-emerald-300">Telegram connected</span> : telegramLink && <a href={telegramLink} target="_blank" rel="noreferrer" className="font-medium text-cyan-300 hover:text-cyan-200">Connect Telegram →</a>)}<a href="/pricing" className="rounded-full border border-slate-700 px-3 py-1.5 font-medium text-slate-300 hover:border-cyan-400/40 hover:text-cyan-200">View plans</a></div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">{isAuthenticated && (appUser?.telegramChatId ? <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 font-medium text-emerald-300">Telegram connected</span> : telegramConfigured && appUser && <TelegramConnect />)}<a href="/pricing" className="rounded-full border border-slate-700 px-3 py-1.5 font-medium text-slate-300 hover:border-cyan-400/40 hover:text-cyan-200">View plans</a></div>
         </div>
       </section>
 

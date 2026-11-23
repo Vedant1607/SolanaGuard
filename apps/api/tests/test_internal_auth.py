@@ -137,6 +137,58 @@ class FakePool:
         return Ctx()
 
 
+LINK_TOKEN = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"  # fake
+START = {"message": {"chat": {"id": 555, "type": "private"}, "text": f"/start {LINK_TOKEN}"}}
+
+
+class TelegramWebhookTests(unittest.TestCase):
+    def setUp(self):
+        self.conn = FakeConn()
+        self.sent = AsyncMock(return_value=True)
+        self.consume = AsyncMock(return_value=telegram_router.LinkResult.LINKED)
+        for p in (patch.object(telegram_router, "get_pool", AsyncMock(return_value=FakePool(self.conn))),
+                  patch.object(telegram_router, "consume_link_token", self.consume),
+                  patch.object(telegram_router, "send_telegram_message", self.sent)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def post(self, headers):
+        return client.post("/api/v1/telegram/webhook", json=START, headers=headers)
+
+    def test_missing_configuration_rejects_everything(self):
+        with configured(TELEGRAM_WEBHOOK_SECRET=""):
+            for headers in ({}, {TELEGRAM: ""}, {TELEGRAM: "anything"}):
+                self.assertEqual(self.post(headers).status_code, 503, headers)
+        self.assertEqual(self.conn.calls, [])
+        self.consume.assert_not_called()
+        self.sent.assert_not_called()
+
+    def test_missing_empty_and_wrong_headers_are_rejected(self):
+        with configured(TELEGRAM_WEBHOOK_SECRET=TG_SECRET):
+            for headers in ({}, {TELEGRAM: ""}, {TELEGRAM: "wrong"}, {TELEGRAM: TG_SECRET.upper()}):
+                r = self.post(headers)
+                self.assertEqual(r.status_code, 401, headers)
+                self.assertNotIn(TG_SECRET, r.text)
+        self.assertEqual(self.conn.calls, [])
+        self.consume.assert_not_called()
+        self.sent.assert_not_called()
+
+    def test_valid_header_keeps_the_linking_behaviour(self):
+        with configured(TELEGRAM_WEBHOOK_SECRET=TG_SECRET):
+            r = self.post({TELEGRAM: TG_SECRET})
+        self.assertEqual((r.status_code, r.json()), (200, {"ok": True}))
+        self.assertEqual(self.consume.await_args.args[1:], (LINK_TOKEN, "555"))
+        self.assertIn("connected", self.sent.await_args.args[1])
+
+    def test_valid_header_with_invalid_token_and_non_message_updates(self):
+        self.consume.return_value = telegram_router.LinkResult.INVALID
+        with configured(TELEGRAM_WEBHOOK_SECRET=TG_SECRET):
+            self.assertEqual(self.post({TELEGRAM: TG_SECRET}).status_code, 200)
+            self.assertIn("invalid or has expired", self.sent.await_args.args[1])
+            r = client.post("/api/v1/telegram/webhook", json={"edited_message": {}}, headers={TELEGRAM: TG_SECRET})
+        self.assertEqual((r.status_code, r.json()), (200, {"ok": True}))
+
+
 def make(**values):
     return Settings(DATABASE_URL="postgresql://x@localhost/x", _env_file=None, **values)
 
