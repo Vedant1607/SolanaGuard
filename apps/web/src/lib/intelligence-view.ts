@@ -55,6 +55,12 @@ export interface IntelligenceReport {
   disclaimer: string;
   history_window: { start: string; end: string; days: number } | null;
   history: IntelligenceHistoryDay[];
+  /**
+   * Raw ``flow_context`` object, present only when requested with
+   * ``flowContext: true`` and served by the API build. Validated separately by
+   * ``parseFlowContext`` so a malformed explanation never hides the classification.
+   */
+  flow_context?: unknown;
 }
 
 export type IntelligenceResult =
@@ -124,10 +130,14 @@ export const MAX_HISTORY_DAYS = 180;
 type FetchLike = (url: string, init: { cache: "no-store"; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 /** Fetch and validate one intelligence response. Never throws. */
-export async function loadIntelligence(fetchImpl: FetchLike, url: string, historyDays = 0, timeoutMs = INTELLIGENCE_TIMEOUT_MS): Promise<IntelligenceResult> {
+export async function loadIntelligence(fetchImpl: FetchLike, url: string, historyDays = 0, timeoutMs = INTELLIGENCE_TIMEOUT_MS, { flowContext = false }: { flowContext?: boolean } = {}): Promise<IntelligenceResult> {
   const days = Math.min(MAX_HISTORY_DAYS, Math.max(0, Math.floor(historyDays)));
+  const params = new URLSearchParams();
+  if (days > 0) params.set("history_days", String(days));
+  if (flowContext) params.set("flow_context", "true");
+  const query = params.toString();
   try {
-    const res = await fetchImpl(days > 0 ? `${url}?history_days=${days}` : url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetchImpl(query ? `${url}?${query}` : url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
     if (res.status === 404) return { ok: false, reason: "not_found" };
     if (res.status === 503) return { ok: false, reason: "not_ready" };
     if (!res.ok) return { ok: false, reason: "unavailable" };

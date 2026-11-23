@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.ml import tvl_robust
 from app.routers import intelligence
-from app.routers.intelligence import PROTOCOL_QUERY, SERIES_QUERY, router
+from app.routers.intelligence import CATEGORY_QUERY, FLOW_QUERY, PROTOCOL_QUERY, SERIES_QUERY, router
 from tests.test_tvl_robust import synthetic_market
 
 TODAY = datetime.now(timezone.utc).date()
@@ -35,9 +35,11 @@ def rows_from(series, end: date):
 
 
 class FakeConnection:
-    def __init__(self, protocol, rows, error=None):
+    def __init__(self, protocol, rows, error=None, categories=(), token_rows=(), flow_error=None):
         self.protocol, self.rows, self.error = protocol, rows, error
-        self.args = None
+        self.categories, self.token_rows, self.flow_error = list(categories), list(token_rows), flow_error
+        self.args = self.flow_args = None
+        self.queries = []
 
     async def fetchrow(self, query, *args):
         assert query == PROTOCOL_QUERY
@@ -46,9 +48,17 @@ class FakeConnection:
         return self.protocol
 
     async def fetch(self, query, *args):
-        assert query == SERIES_QUERY
-        self.args = args
-        return self.rows
+        self.queries.append(query)
+        if query == SERIES_QUERY:
+            self.args = args
+            return self.rows
+        if query == CATEGORY_QUERY:
+            return self.categories
+        assert query == FLOW_QUERY, query
+        if self.flow_error:
+            raise self.flow_error
+        self.flow_args = args
+        return self.token_rows
 
 
 class FakePool:
@@ -184,6 +194,82 @@ class IntelligenceHistoryTests(unittest.TestCase):
         self.assertEqual(call(conn, query=f"?history_days={intelligence.MAX_HISTORY_DAYS + 1}").status_code, 422)
         self.assertEqual(call(conn, query="?history_days=-1").status_code, 422)
         self.assertEqual(call(conn, query=f"?history_days={intelligence.MAX_HISTORY_DAYS}").status_code, 200)
+
+
+BASELINE_KEYS = {
+    "protocol", "model", "evaluated_at", "classification", "robust_z", "threshold", "direction", "drawdown_30d",
+    "excess_log_return", "daily_log_return", "market", "latest_closed_day", "latest_age_days", "observation_window",
+    "source", "supporting_observations", "explanation", "insufficient_reasons", "disclaimer", "history_window", "history",
+}
+CATEGORIES = [{"slug": f"p{i}", "category": "DEX"} for i in range(5)]
+
+
+def token_rows_for(rows, slug="p0", drop_last=False):
+    """Synthetic token rows matching a protocol's TVL rows: one USDC asset (quantity = USD value)."""
+    own = sorted((r for r in rows if r["slug"] == slug), key=lambda r: r["observed_at"])
+    if drop_last:
+        own = own[:-1]
+    out = []
+    for r in own:
+        day = r["observed_at"].date()
+        out.append({"slug": slug, "metric": "tokens.qty.daily", "day": day, "symbol": "USDC", "value": r["value"]})
+        out.append({"slug": slug, "metric": "tokens.usd.daily", "day": day, "symbol": "USDC", "value": r["value"]})
+    return out
+
+
+class FlowContextApiTests(unittest.TestCase):
+    def setUp(self):
+        self.end = TODAY - timedelta(days=1)
+        self.rows = rows_from(synthetic_market(days=200, shocks={("p0", 199): -0.35}), self.end)
+
+    def test_default_response_is_backward_compatible_and_runs_no_extra_query(self):
+        conn = FakeConnection(PROTOCOL, self.rows, categories=CATEGORIES, token_rows=token_rows_for(self.rows))
+        body = call(conn).json()
+        self.assertEqual(set(body), BASELINE_KEYS)
+        self.assertNotIn("flow_context", body)
+        self.assertEqual(conn.queries, [SERIES_QUERY])
+
+    def test_opt_in_returns_an_explanation_for_the_baseline_day(self):
+        conn = FakeConnection(PROTOCOL, self.rows, categories=CATEGORIES, token_rows=token_rows_for(self.rows))
+        body = call(conn, query="?flow_context=true").json()
+        ctx = body["flow_context"]
+        self.assertEqual(conn.queries, [SERIES_QUERY, CATEGORY_QUERY, FLOW_QUERY])
+        self.assertEqual(ctx["measurement_day"], body["latest_closed_day"])
+        self.assertTrue(ctx["available"])
+        self.assertLess(ctx["flow"]["log_change"], -0.3)  # quantities fell with the shocked TVL
+        self.assertEqual(body["classification"], "UNUSUAL")  # the baseline is unchanged by the explanation
+        self.assertEqual(set(body) - {"flow_context"}, BASELINE_KEYS)
+        # the extra query is bounded to the 120 days ending on the measurement day
+        start, end = conn.flow_args[1], conn.flow_args[2]
+        self.assertEqual((start.date(), end.date()), (self.end - timedelta(days=119), self.end + timedelta(days=1)))
+        self.assertEqual(conn.flow_args[3], "p0")
+        self.assertEqual(conn.flow_args[4], ["tokens.qty.daily", "tokens.usd.daily", "tvl.borrowed.usd.daily"])
+        self.assertEqual(conn.flow_args[5], ["jito", "marinade"])
+
+    def test_protocol_without_token_history_is_honest(self):
+        conn = FakeConnection(PROTOCOL, self.rows, categories=CATEGORIES, token_rows=[])
+        ctx = call(conn, query="?flow_context=true").json()["flow_context"]
+        self.assertFalse(ctx["available"])
+        self.assertIsNone(ctx["flow"])
+        self.assertEqual({u["field"]: u["code"] for u in ctx["unavailable"]}["flow_log"], "no_token_data")
+
+    def test_lagging_token_history_is_not_substituted(self):
+        conn = FakeConnection(PROTOCOL, self.rows, categories=CATEGORIES, token_rows=token_rows_for(self.rows, drop_last=True))
+        body = call(conn, query="?flow_context=true").json()
+        ctx = body["flow_context"]
+        self.assertEqual(ctx["measurement_day"], body["latest_closed_day"])
+        self.assertFalse(ctx["available"])
+        self.assertEqual({u["field"]: u["code"] for u in ctx["unavailable"]}["flow_log"], "no_observation")
+
+    def test_no_baseline_day_skips_the_extra_query(self):
+        conn = FakeConnection({**PROTOCOL, "is_active": False}, [], categories=CATEGORIES)
+        body = call(conn, query="?flow_context=true").json()
+        self.assertIsNone(body["flow_context"]["measurement_day"])
+        self.assertNotIn(FLOW_QUERY, conn.queries)
+
+    def test_schema_errors_still_return_503(self):
+        conn = FakeConnection(PROTOCOL, self.rows, categories=CATEGORIES, flow_error=asyncpg.exceptions.UndefinedTableError("x"))
+        self.assertEqual(call(conn, query="?flow_context=true").status_code, 503)
 
 
 if __name__ == "__main__":

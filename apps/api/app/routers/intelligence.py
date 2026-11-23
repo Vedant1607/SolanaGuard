@@ -16,7 +16,9 @@ from pydantic import BaseModel
 
 from app.adapters.defillama_history import ADAPTER_KEY, ADAPTER_VERSION, METRIC_TVL_DAILY, SOURCE
 from app.db import get_pool
+from app.ml import features_daily
 from app.ml import tvl_robust as model
+from app.ml.flow_context import FLOW_CONTEXT_DAYS, build_flow_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -41,6 +43,27 @@ SERIES_QUERY = """
       AND (p."isActive" = true OR p.id = $4)
     ORDER BY p.slug, o."sourceObservedAt", o.id
 """
+
+
+# Optional explanation (``?flow_context=true``): read-only, bounded to FLOW_CONTEXT_DAYS.
+CATEGORY_QUERY = 'SELECT slug, category::text AS category FROM protocols WHERE "isActive" = true OR id = $1'
+
+FLOW_QUERY = """
+    SELECT p.slug, o."metricKey" AS metric, o."sourceObservedAt"::date AS day, o."valueText" AS symbol,
+           o."valueNumeric" AS value
+    FROM metric_observations o
+    JOIN protocols p ON p.id = o."protocolId"
+    WHERE o."adapterKey" = $1 AND o.status = 'OK'
+      AND o."sourceObservedAt" >= $2 AND o."sourceObservedAt" < $3
+      AND (
+            (o."protocolId" = $4 AND o."metricKey" = ANY($5::text[]))
+         OR (p.slug = ANY($6::text[]) AND o."metricKey" = ANY($7::text[]) AND o."valueText" = 'SOL')
+      )
+    ORDER BY p.slug, o."sourceObservedAt", o."metricKey", o."valueText"
+"""
+TOKEN_ADAPTER_KEY = "defillama_token_history"
+TARGET_METRICS = ["tokens.qty.daily", "tokens.usd.daily", "tvl.borrowed.usd.daily"]
+SOL_REFERENCE_METRICS = ["tokens.qty.daily", "tokens.usd.daily"]
 
 
 class SupportingObservation(BaseModel):
@@ -109,6 +132,7 @@ class IntelligenceResponse(BaseModel):
     disclaimer: str
     history_window: HistoryWindow | None = None
     history: list[HistoryDay] = []
+    flow_context: dict | None = None  # only present when requested with ?flow_context=true
 
 
 def _utc(value: datetime) -> datetime:
@@ -192,10 +216,30 @@ def build_response(protocol, rows, now: datetime, history_days: int = 0) -> Inte
     )
 
 
-@router.get("/{slug}/intelligence", response_model=IntelligenceResponse)
+def tvl_observation_rows(rows) -> list[dict]:
+    """SERIES_QUERY rows in the shape ``features_daily.inputs_from_rows`` expects."""
+    return [{"slug": r["slug"], "metric": METRIC_TVL_DAILY, "day": r["observed_at"].date(), "symbol": None, "value": r["value"]}
+            for r in rows]
+
+
+async def load_flow_context(conn, protocol, rows, measurement_day: date | None) -> dict:
+    """Read-only: categories plus at most FLOW_CONTEXT_DAYS of token/borrowed rows, then the pure builder."""
+    if measurement_day is None:
+        return build_flow_context([], [], protocol["slug"], None)
+    start = measurement_day - timedelta(days=FLOW_CONTEXT_DAYS - 1)
+    categories = [dict(r) for r in await conn.fetch(CATEGORY_QUERY, protocol["id"])]
+    token_rows = [dict(r) for r in await conn.fetch(
+        FLOW_QUERY, TOKEN_ADAPTER_KEY, datetime.combine(start, datetime.min.time()),
+        datetime.combine(measurement_day + timedelta(days=1), datetime.min.time()), protocol["id"], TARGET_METRICS,
+        list(features_daily.SOL_PRICE_SOURCES), SOL_REFERENCE_METRICS)]
+    return build_flow_context(categories, tvl_observation_rows(rows) + token_rows, protocol["slug"], measurement_day)
+
+
+@router.get("/{slug}/intelligence", response_model=IntelligenceResponse, response_model_exclude_unset=True)
 async def get_protocol_intelligence(
     slug: str,
     history_days: int = Query(0, ge=0, le=MAX_HISTORY_DAYS, description="Include per-day scores for this many closed days"),
+    flow_context: bool = Query(False, description="Include the token-flow explanation for the latest closed day"),
 ) -> IntelligenceResponse:
     now = datetime.now(timezone.utc)
     since = datetime.combine(now.date() - timedelta(days=LOOKBACK_DAYS), datetime.min.time())
@@ -206,7 +250,11 @@ async def get_protocol_intelligence(
             if protocol is None:
                 raise HTTPException(status_code=404, detail="Protocol not found")
             rows = await conn.fetch(SERIES_QUERY, ADAPTER_KEY, METRIC_TVL_DAILY, since, protocol["id"])
+            response = build_response(protocol, rows, now, history_days)
+            if flow_context:
+                # Same measurement day as the baseline classification, never a different token date.
+                response.flow_context = await load_flow_context(conn, protocol, rows, response.latest_closed_day)
     except (asyncpg.exceptions.UndefinedTableError, asyncpg.exceptions.UndefinedColumnError):
         logger.warning("Intelligence endpoint unavailable: Phase 1 migrations are not applied")
         raise HTTPException(status_code=503, detail="Intelligence data is not available yet") from None
-    return build_response(protocol, rows, now, history_days)
+    return response

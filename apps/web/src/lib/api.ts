@@ -169,8 +169,9 @@ export type { IntelligenceReport, IntelligenceResult } from "./intelligence-view
 /**
  * Never throws. Timeouts, HTTP errors and malformed bodies are reported as a
  * reason, never as a classification. ``historyDays`` (max 180) adds per-day
- * scores for the chart in the same request.
+ * scores for the chart in the same request. ``flowContext`` adds the token-flow
+ * explanation (detail page only; it costs ~0.5 s of server time per request).
  */
-export function fetchProtocolIntelligence(slug: string, { historyDays = 0 }: { historyDays?: number } = {}): Promise<IntelligenceResult> {
-  return loadIntelligence(fetch, `${process.env.API_URL}/api/v1/protocols/${encodeURIComponent(slug)}/intelligence`, historyDays);
+export function fetchProtocolIntelligence(slug: string, { historyDays = 0, flowContext = false }: { historyDays?: number; flowContext?: boolean } = {}): Promise<IntelligenceResult> {
+  return loadIntelligence(fetch, `${process.env.API_URL}/api/v1/protocols/${encodeURIComponent(slug)}/intelligence`, historyDays, undefined, { flowContext });
 }

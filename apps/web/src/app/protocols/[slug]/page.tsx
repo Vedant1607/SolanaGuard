@@ -8,6 +8,7 @@ import { RULE_CONTEXT, explorerUrl, ruleTitle, shortKey, sortEvidence, summarize
 import { formatAbsoluteUtc, formatRelative, parseApiTimestamp } from "@/lib/time";
 import { LevelBadge, SupportBadge } from "@/components/SecurityBadges";
 import { IntelligencePanel } from "@/components/Intelligence";
+import { FlowContextPanel } from "@/components/FlowContext";
 
 export const dynamic = "force-dynamic";
 
@@ -80,8 +81,9 @@ export default async function ProtocolSecurityPage({ params }: { params: Promise
     return <Shell><h1 className="mt-4 text-2xl font-semibold text-white">{protocol.name}</h1><Notice title="Available on Pro">Security evidence and TVL behaviour intelligence for this protocol is available on the Pro plan. <Link href="/pricing" className="font-medium text-cyan-300 hover:text-cyan-200">View plans →</Link></Notice></Shell>;
   }
 
-  // Both assessments in parallel; the intelligence request carries the 180-day chart history.
-  const [security, intelligenceResult] = await Promise.all([fetchProtocolSecurity(slug), fetchProtocolIntelligence(slug, { historyDays: 180 })]);
+  // Both assessments in parallel; the intelligence request carries the 180-day chart history
+  // and, on this page only, the token-flow explanation for the same closed day.
+  const [security, intelligenceResult] = await Promise.all([fetchProtocolSecurity(slug), fetchProtocolIntelligence(slug, { historyDays: 180, flowContext: true })]);
   // eslint-disable-next-line react-hooks/purity -- force-dynamic page: one clock read per request
   const now = Date.now();
   const labels = protocolMetricLabels(protocol);
@@ -92,7 +94,7 @@ export default async function ProtocolSecurityPage({ params }: { params: Promise
     {protocol.explanation && <p className="mt-3 text-xs text-slate-500">Latest: {protocol.explanation}</p>}
   </section>;
 
-  const intelligence = <IntelligencePanel result={intelligenceResult} now={now} />;
+  const intelligence = <><IntelligencePanel result={intelligenceResult} now={now} /><FlowContextPanel result={intelligenceResult} protocolName={protocol.name} /></>;
 
   if (!security.ok) {
     return <Shell><h1 className="mt-4 text-2xl font-semibold text-white">{protocol.name}</h1><Notice title="Security assessment unavailable">{security.reason === "not_ready" ? "The security registry has not been set up on this server yet." : "The security assessment could not be loaded. No security level is shown until it can be."}</Notice>{intelligence}{activity}</Shell>;
