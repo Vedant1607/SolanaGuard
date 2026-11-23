@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     SECURITY_COLLECTOR_ENABLED: bool = True
     SECURITY_COLLECTOR_INTERVAL_SECONDS: int = Field(default=900, gt=0)  # 15 min
     RESEND_API_KEY: str = ""
+    # Recurring refresh of DefiLlama daily history (app/tasks/defillama_refresh.py).
+    # Local development only: off unless explicitly enabled, and every cycle
+    # verifies the connected cluster against the expected identity below
+    # (no default for the system identifier, so it fails closed until set).
+    DEFILLAMA_HISTORY_REFRESH_ENABLED: bool = False
+    DEFILLAMA_HISTORY_REFRESH_INTERVAL_SECONDS: int = Field(default=21_600, gt=0)  # 6 h after a cycle finishes
+    DEFILLAMA_HISTORY_REFRESH_STARTUP_DELAY_SECONDS: int = Field(default=60, ge=0)
+    DEFILLAMA_HISTORY_REFRESH_EXPECTED_DATABASE: str = "solanaguard"
+    DEFILLAMA_HISTORY_REFRESH_EXPECTED_SYSTEM_IDENTIFIER: str = ""
     ALERT_FROM_EMAIL: str = "SolanaGuard Alerts <onboarding@resend.dev>"
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_WEBHOOK_SECRET: str = ""

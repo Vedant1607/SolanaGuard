@@ -2,6 +2,7 @@ import asyncio
 from app.tasks.ingest import ingest_all_protocols
 from app.tasks.anomaly_detection import anomaly_detector_loop
 from app.tasks.security_collector import security_collector_loop
+from app.tasks.defillama_refresh import defillama_refresh_loop
 from app.config import settings
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -12,6 +13,7 @@ from app.config import settings
 from app.db import close_pool
 from app.log_redaction import install_log_redaction
 from app.routers import anomalies
+from app.routers import history
 from app.routers import intelligence
 from app.routers import protocols
 from app.routers import security
@@ -44,6 +46,15 @@ async def lifespan(app: FastAPI):
     ]
     if settings.SECURITY_COLLECTOR_ENABLED:
         tasks.append(asyncio.create_task(security_collector_loop(), name="security-collector-loop"))
+    if settings.DEFILLAMA_HISTORY_REFRESH_ENABLED:
+        logger.info(
+            "DefiLlama history refresh enabled: first cycle after %ss, then every %ss after each cycle finishes",
+            settings.DEFILLAMA_HISTORY_REFRESH_STARTUP_DELAY_SECONDS,
+            settings.DEFILLAMA_HISTORY_REFRESH_INTERVAL_SECONDS,
+        )
+        tasks.append(asyncio.create_task(defillama_refresh_loop(), name="defillama-history-refresh-loop"))
+    else:
+        logger.info("DefiLlama history refresh disabled (DEFILLAMA_HISTORY_REFRESH_ENABLED=false)")
     try:
         yield
     finally:
@@ -72,6 +83,7 @@ app.include_router(protocols.router, prefix="/api/v1/protocols", tags=["Protocol
 app.include_router(security.router, prefix="/api/v1/protocols", tags=["Protocols"])
 app.include_router(security.status_router, prefix="/api/v1/security", tags=["Security"])
 app.include_router(intelligence.router, prefix="/api/v1/protocols", tags=["Intelligence"])
+app.include_router(history.router, prefix="/api/v1/history", tags=["History"])
 app.include_router(anomalies.router, prefix="/api/v1/anomalies", tags=["Anomalies"])
 app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["Telegram"])
 

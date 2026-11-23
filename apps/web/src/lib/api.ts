@@ -1,3 +1,4 @@
+import type { HistoryRefreshStatus } from "./history-view";
 import { loadIntelligence, type IntelligenceResult } from "./intelligence-view";
 
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -174,4 +175,20 @@ export type { IntelligenceReport, IntelligenceResult } from "./intelligence-view
  */
 export function fetchProtocolIntelligence(slug: string, { historyDays = 0, flowContext = false }: { historyDays?: number; flowContext?: boolean } = {}): Promise<IntelligenceResult> {
   return loadIntelligence(fetch, `${process.env.API_URL}/api/v1/protocols/${encodeURIComponent(slug)}/intelligence`, historyDays, undefined, { flowContext });
+}
+
+// --- DefiLlama daily-history freshness (GET /api/v1/history/refresh-status) --
+
+export type { HistoryRefreshStatus } from "./history-view";
+
+/** Never throws; null when the status cannot be loaded. */
+export async function fetchHistoryRefreshStatus(): Promise<HistoryRefreshStatus | null> {
+  try {
+    const res = await fetch(`${process.env.API_URL}/api/v1/history/refresh-status`, { cache: "no-store", signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) return null;
+    const body = (await res.json()) as HistoryRefreshStatus;
+    return body && typeof body === "object" && body.refresh && body.availability ? body : null;
+  } catch {
+    return null;
+  }
 }

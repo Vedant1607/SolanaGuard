@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { fetchCollectorStatus, fetchProtocolIntelligence, fetchProtocolSecurity, fetchProtocols, type CollectorStatus, type IntelligenceResult, type Protocol, type ProtocolCategory, type RiskLevel, type SecurityLevel, type SecurityResult } from "@/lib/api";
+import { fetchCollectorStatus, fetchHistoryRefreshStatus, fetchProtocolIntelligence, fetchProtocolSecurity, fetchProtocols, type CollectorStatus, type IntelligenceResult, type Protocol, type ProtocolCategory, type RiskLevel, type SecurityLevel, type SecurityResult } from "@/lib/api";
 import { getWatchedSlugs } from "@/lib/get-watched-slugs";
 import { WatchlistButton } from "@/components/WatchlistButton";
 import { getAppUser } from "@/lib/get-app-user";
@@ -15,6 +15,7 @@ import { IntelligenceCardSection } from "@/components/Intelligence";
 import { RecentDetections, RecentDetectionsLoading } from "@/components/RecentDetections";
 import { assessFreshness, type DataNotice } from "@/lib/freshness";
 import { formatAbsoluteUtc, formatRelative, parseApiTimestamp } from "@/lib/time";
+import { describeHistory, type HistoryNotice } from "@/lib/history-view";
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +116,20 @@ function SecurityOverview({ status, securityBySlug, now }: { status: CollectorSt
   </div>;
 }
 
+const HISTORY_TONE: Record<HistoryNotice["tone"], string> = {
+  ok: "text-slate-400",
+  warning: "text-amber-300",
+  info: "text-slate-500",
+};
+
+/** Daily-history freshness: the stored closed day and the last refresh run, kept separate. */
+function HistoryFreshness({ view }: { view: ReturnType<typeof describeHistory> }) {
+  return <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/30 px-4 py-3 text-xs leading-5" aria-label="Daily history freshness">
+    <p className={HISTORY_TONE[view.availability.tone]}><span className="font-semibold uppercase tracking-[0.14em] text-slate-500">Daily history</span> <span className="ml-1">{view.availability.text}</span></p>
+    <p className={`mt-0.5 ${HISTORY_TONE[view.refresh.tone]}`}>{view.refresh.text}{view.lagging.length > 0 && <span className="text-amber-300"> Behind: {view.lagging.join(", ")}.</span>}</p>
+  </div>;
+}
+
 function ProtocolCard({ protocol, security, intelligence, isAuthenticated, watched, now }: { protocol: Protocol; security: SecurityResult; intelligence: IntelligenceResult; isAuthenticated: boolean; watched: boolean; now: number }) {
   const freshness = assessFreshness(protocol, now);
   const labels = protocolMetricLabels(protocol);
@@ -162,6 +177,7 @@ export default async function DashboardPage() {
   const isLimited = visibleCount < protocols.length;
   const openSlugs = openProtocolSlugs(protocols, visibleCount);
   const collectorStatusPromise = fetchCollectorStatus();
+  const historyStatusPromise = fetchHistoryRefreshStatus();
   // One request per open card for each assessment, all in parallel; locked
   // (Pro-only) cards fetch nothing. Intelligence omits history on the cards.
   const openProtocols = protocols.filter((p) => openSlugs.has(p.slug));
@@ -175,6 +191,7 @@ export default async function DashboardPage() {
   const elevatedOnStaleBaseline = elevated.filter((protocol) => assessFreshness(protocol, now).staleBaseline).length;
   const latestSnapshot = protocols.map((protocol) => assessFreshness(protocol, now).snapshotAt).filter((date): date is Date => date !== null).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
   const collectorStatus = await collectorStatusPromise;
+  const historyView = describeHistory(await historyStatusPromise, now);
   const telegramBot = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
   const telegramLink = telegramBot && appUser?.id ? `https://t.me/${encodeURIComponent(telegramBot)}?start=${encodeURIComponent(appUser.id)}` : null;
 
@@ -191,7 +208,7 @@ export default async function DashboardPage() {
       {!protocolsResult.ok && <div role="alert" className="mt-8 rounded-2xl border border-amber-500/25 bg-amber-500/[0.04] p-5 sm:p-6"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-300">Protocol telemetry unavailable</p><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">The SolanaGuard API could not be reached, so protocol data is not shown. No risk levels are being reported until the service responds — reload to try again.</p></div>}
 
       {protocolsResult.ok && <>
-      <section aria-labelledby="overview" className="mt-8"><div className="flex items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Overview</p><h2 id="overview" className="mt-1 text-xl font-semibold text-white">Current risk coverage</h2></div><span className="text-right text-xs text-slate-500" title={formatAbsoluteUtc(latestSnapshot)}>Latest telemetry {latestSnapshot ? formatRelative(latestSnapshot, now) : "— none recorded"}</span></div><div className="mt-4 grid gap-4 md:grid-cols-3"><div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5"><div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Monitored protocols</div><div className="mt-3 text-3xl font-semibold text-white">{protocols.length.toLocaleString()}</div><p className="mt-2 text-sm text-slate-500">Protocols with current dashboard telemetry.</p></div><div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5"><div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Elevated activity signal</div><div className="mt-3 text-3xl font-semibold text-white">{elevated.length.toLocaleString()}</div><p className="mt-2 text-sm text-slate-500">Protocols whose latest TVL or transaction change is classified High or Critical by the rule-based activity score. This is separate from the on-chain security assessment and from anomaly scores.</p>{elevatedOnStaleBaseline > 0 && <p className="mt-2 text-xs text-amber-300">{elevatedOnStaleBaseline} of these compare against a stale baseline — low confidence.</p>}</div><SecurityOverview status={collectorStatus} securityBySlug={securityBySlug} now={now} /></div></section>
+      <section aria-labelledby="overview" className="mt-8"><div className="flex items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Overview</p><h2 id="overview" className="mt-1 text-xl font-semibold text-white">Current risk coverage</h2></div><span className="text-right text-xs text-slate-500" title={formatAbsoluteUtc(latestSnapshot)}>Latest telemetry {latestSnapshot ? formatRelative(latestSnapshot, now) : "— none recorded"}</span></div><div className="mt-4 grid gap-4 md:grid-cols-3"><div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5"><div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Monitored protocols</div><div className="mt-3 text-3xl font-semibold text-white">{protocols.length.toLocaleString()}</div><p className="mt-2 text-sm text-slate-500">Protocols with current dashboard telemetry.</p></div><div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5"><div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Elevated activity signal</div><div className="mt-3 text-3xl font-semibold text-white">{elevated.length.toLocaleString()}</div><p className="mt-2 text-sm text-slate-500">Protocols whose latest TVL or transaction change is classified High or Critical by the rule-based activity score. This is separate from the on-chain security assessment and from anomaly scores.</p>{elevatedOnStaleBaseline > 0 && <p className="mt-2 text-xs text-amber-300">{elevatedOnStaleBaseline} of these compare against a stale baseline — low confidence.</p>}</div><SecurityOverview status={collectorStatus} securityBySlug={securityBySlug} now={now} /></div><HistoryFreshness view={historyView} /></section>
 
       {isLimited && <div className="mt-6 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.04] px-4 py-3 text-sm text-slate-400">Showing {visibleCount} of {protocols.length} protocols on the Free plan — <a href="/pricing" className="font-medium text-cyan-300 hover:text-cyan-200">upgrade to Pro</a> to access all protocol cards.</div>}
 
