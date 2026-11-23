@@ -1,21 +1,17 @@
 import logging
-from fastapi import APIRouter, Request, Header, HTTPException
+from fastapi import APIRouter, Depends, Request
+from app.auth import require_internal_secret, require_telegram_secret
 from app.db import get_pool
-from app.config import settings
 from app.alerts.telegram import send_telegram_message
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/webhook")
-async def telegram_webhook(
-    request: Request,
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
-):
-    if x_telegram_bot_api_secret_token != settings.TELEGRAM_WEBHOOK_SECRET:
-        raise HTTPException(status_code=401, detail="Invalid webhook secret")
-
+# Telegram sends X-Telegram-Bot-Api-Secret-Token; requests are refused (fail closed)
+# when TELEGRAM_WEBHOOK_SECRET is not configured (see app/auth.py).
+@router.post("/webhook", dependencies=[Depends(require_telegram_secret)])
+async def telegram_webhook(request: Request):
     update = await request.json()
     message = update.get("message")
     if not message:
@@ -48,7 +44,8 @@ async def telegram_webhook(
     return {"ok": True}
 
 
-@router.post("/test-message")
+# Operator-only: sends an arbitrary message, so it requires X-Internal-Api-Secret.
+@router.post("/test-message", dependencies=[Depends(require_internal_secret)])
 async def test_message(chat_id: str, text: str = "Test message from SolanaGuard"):
     sent = await send_telegram_message(chat_id, text)
     return {"sent": sent}

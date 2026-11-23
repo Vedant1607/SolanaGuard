@@ -71,12 +71,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS only controls which browser origins may read responses; it is not
+# authentication. The web app calls this API from its server and only reads,
+# so browsers get GET from the configured origins, without credentials.
+# Write endpoints are protected by app/auth.py regardless of origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET"],
 )
 
 app.include_router(protocols.router, prefix="/api/v1/protocols", tags=["Protocols"])

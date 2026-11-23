@@ -1,4 +1,5 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from app.auth import require_internal_secret
 from app.db import get_pool
 from app.tasks.ingest import ingest_all_protocols
 from app.alerts.email import send_alert_email
@@ -71,12 +72,13 @@ async def get_latest_risk_score(slug: str):
         return dict(row)
 
 
-@router.post("/ingest")
+# Operator-only actions: require X-Internal-Api-Secret (fail closed without a configured secret).
+@router.post("/ingest", dependencies=[Depends(require_internal_secret)])
 async def trigger_ingestion():
     count = await ingest_all_protocols()
     return {"snapshots_written": count}
 
-@router.post("/{slug}/test-alert")
+@router.post("/{slug}/test-alert", dependencies=[Depends(require_internal_secret)])
 async def test_alert(slug: str, to_email: str):
     sent = await send_alert_email(
         to_email=to_email, protocol_name=slug,
