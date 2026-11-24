@@ -8,6 +8,7 @@ from app.solana.protocols import LAUNCH_PROTOCOLS, get_protocol_metrics
 from app.scoring.rule_based import score_from_snapshots
 from app.alerts.email import send_alert_email
 from app.alerts.telegram import send_telegram_message
+from app.tasks.ml_risk import assess_ml_risk
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,10 @@ async def _score_latest_snapshots(conn, protocol_id: str, slug: str) -> None:
             latest_tx=latest["txCount24h"], previous_tx=previous["txCount24h"],
         )
         previous_level_row = await conn.fetchrow(
+            # Only the rule-based score drives alerts; ML rows (method 'ml') are
+            # stored alongside it and must not change escalation state.
             'SELECT "riskLevel" FROM risk_scores WHERE "protocolId" = $1 '
+            "AND method = 'rule_based' "
             'ORDER BY "scoredAt" DESC LIMIT 1',
             protocol_id,
         )
@@ -157,6 +161,7 @@ async def _ingest_protocols(pool) -> int:
                 logger.warning(f"No metrics returned for {slug}, skipping")
                 continue
 
+            snapshot_id = str(uuid.uuid4())
             async with pool.acquire() as conn:
                 await conn.execute(
                     '''
@@ -164,7 +169,7 @@ async def _ingest_protocols(pool) -> int:
                         (id, "protocolId", "tvlUsd", "txCount24h", "snapshotAt")
                     VALUES ($1, $2, $3, $4, $5)
                     ''',
-                    str(uuid.uuid4()),
+                    snapshot_id,
                     protocol_id,
                     metrics.tvl_usd,
                     metrics.tx_count_24h,
@@ -178,6 +183,15 @@ async def _ingest_protocols(pool) -> int:
                     await _score_latest_snapshots(conn, protocol_id, slug)
                 except Exception:
                     logger.exception(f"Snapshot saved for {slug}, but risk scoring failed")
+
+                # Independent of the rule-based score above: a failure or skip
+                # here never alters it, and nothing is written for a skip.
+                try:
+                    outcome = await assess_ml_risk(conn, protocol_id, slug, snapshot_id)
+                    if outcome.status == "skipped":
+                        logger.info(f"ML risk scoring skipped for {slug}: {outcome.reason}")
+                except Exception:
+                    logger.exception(f"Snapshot saved for {slug}, but ML risk scoring failed")
         except Exception:
             logger.exception(f"Ingestion failed for {slug}, continuing with remaining protocols")
 

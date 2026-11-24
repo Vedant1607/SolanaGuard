@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.routers.anomalies import router
+from app.tasks.ml_risk import ML_DETECTOR_VERSION
 
 
 class FakeConnection:
@@ -102,7 +103,7 @@ class AnomaliesApiTests(unittest.TestCase):
             "pagination": {"limit": 50, "offset": 0, "total": 1},
         })
         self.assertIn("JOIN protocols AS p", connection.fetch_args[0])
-        self.assertEqual(connection.fetch_args[1], (50, 0))
+        self.assertEqual(connection.fetch_args[1], (ML_DETECTOR_VERSION, 50, 0))
 
     def test_returns_empty_results(self):
         response = self.request(FakeConnection())
@@ -119,7 +120,7 @@ class AnomaliesApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["pagination"], {"limit": 2, "offset": 4, "total": 7})
-        self.assertEqual(connection.fetch_args[1], (2, 4))
+        self.assertEqual(connection.fetch_args[1], (ML_DETECTOR_VERSION, 2, 4))
 
     def test_applies_protocol_and_severity_filters(self):
         connection = FakeConnection(rows=[anomaly_row()], total=1)
@@ -130,10 +131,20 @@ class AnomaliesApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("p.slug = $1", connection.fetch_args[0])
-        self.assertIn('a.severity = $2::"RiskLevel"', connection.fetch_args[0])
-        self.assertEqual(connection.fetch_args[1], ("jupiter", "HIGH", 2, 4))
-        self.assertEqual(connection.fetchval_args[1], ("jupiter", "HIGH"))
+        self.assertIn("p.slug = $2", connection.fetch_args[0])
+        self.assertIn('a.severity = $3::"RiskLevel"', connection.fetch_args[0])
+        self.assertEqual(connection.fetch_args[1], (ML_DETECTOR_VERSION, "jupiter", "HIGH", 2, 4))
+        self.assertEqual(connection.fetchval_args[1], (ML_DETECTOR_VERSION, "jupiter", "HIGH"))
+
+    def test_feed_excludes_ml_risk_engine_rows_from_data_and_total(self):
+        connection = FakeConnection(rows=[], total=0)
+
+        response = self.request(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('a."detectorVersion" <> $1', connection.fetch_args[0])
+        self.assertIn('a."detectorVersion" <> $1', connection.fetchval_args[0])
+        self.assertEqual(connection.fetchval_args[1], (ML_DETECTOR_VERSION,))
 
     def test_rejects_invalid_query_parameters(self):
         for query in ("limit=0", "limit=101", "offset=-1", "severity=UNKNOWN"):

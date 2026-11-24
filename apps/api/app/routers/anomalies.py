@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.db import get_pool
+from app.tasks.ml_risk import ML_DETECTOR_VERSION
 
 
 logger = logging.getLogger(__name__)
@@ -71,15 +72,17 @@ class AnomalyListResponse(BaseModel):
 
 
 def _where_clause(protocol_slug: str | None, severity: RiskLevel | None) -> tuple[str, list[str]]:
-    clauses: list[str] = []
-    values: list[str] = []
+    # The feed's score is a calibration percentile. The ML risk engine's anomaly
+    # rows use a different 0-100 scale, so they are stored but not served here.
+    values: list[str] = [ML_DETECTOR_VERSION]
+    clauses: list[str] = ['a."detectorVersion" <> $1']
     if protocol_slug is not None:
         values.append(protocol_slug)
         clauses.append(f"p.slug = ${len(values)}")
     if severity is not None:
         values.append(severity.value)
         clauses.append(f'a.severity = ${len(values)}::"RiskLevel"')
-    return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), values
+    return f"WHERE {' AND '.join(clauses)}", values
 
 
 @router.get(

@@ -41,7 +41,9 @@ async def list_protocols():
             LEFT JOIN LATERAL (
                 SELECT "overallScore", "riskLevel", explanation, "scoredAt"
                 FROM risk_scores
-                WHERE "protocolId" = p.id
+                -- The dashboard shows the rule-based score; ML risk-engine rows
+                -- (method 'ml') are stored separately and are not comparable.
+                WHERE "protocolId" = p.id AND method = 'rule_based'
                 ORDER BY "scoredAt" DESC
                 LIMIT 1
             ) rs ON true
@@ -61,7 +63,7 @@ async def get_latest_risk_score(slug: str):
             SELECT rs."overallScore", rs."riskLevel", rs.method, rs.explanation, rs."scoredAt"
             FROM risk_scores rs
             JOIN protocols p ON p.id = rs."protocolId"
-            WHERE p.slug = $1
+            WHERE p.slug = $1 AND rs.method = 'rule_based'
             ORDER BY rs."scoredAt" DESC
             LIMIT 1
             ''',
