@@ -18,6 +18,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SolanaGuard — Solana DeFi risk monitor",
   description: "Protocol risk telemetry and anomaly detection for Solana DeFi protocols.",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
