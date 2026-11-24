@@ -1,10 +1,11 @@
+from functools import cache
 from pathlib import Path
 
 import joblib
 import pandas as pd
 
 from app.ml.features import build_features
-from app.ml.anomaly_detector import detect
+from app.ml.category_anomaly_detector import detect
 from app.ml.risk_scorer import compute_risk_score
 
 
@@ -17,6 +18,8 @@ MODEL_FILES = {
 }
 
 
+# Cached: ingestion scores every protocol each cycle, and each artifact is ~2.3 MB.
+@cache
 def load_model(category: str):
     filename = MODEL_FILES.get(category)
     if filename is None:

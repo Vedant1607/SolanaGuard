@@ -12,6 +12,39 @@ enum ProtocolCategory {
   DEX
   LENDING
   LIQUID_STAKING
+  PERPS
+}
+
+// How much of a protocol SolanaGuard can currently measure. FULL is reserved
+// for protocols with a protocol-specific adapter; until then everything is
+// PARTIAL. New catalogue / user-added protocols start PARTIAL.
+enum SupportLevel {
+  FULL
+  PARTIAL
+  UNSUPPORTED
+}
+
+// PROGRAM: executable program. STAKE_POOL: stake-pool account (not a program).
+// MARKET: protocol-wide state/market account. MINT: SPL token mint.
+enum AddressKind {
+  PROGRAM
+  STAKE_POOL
+  MARKET
+  MINT
+}
+
+enum AddressVerification {
+  UNVERIFIED
+  VERIFIED // account exists on mainnet with the expected owner/loader
+  MISMATCH // account missing or owned by something unexpected
+}
+
+// OK/STALE observations carry a value; MISSING/ERROR never do (DB CHECK).
+enum ObservationStatus {
+  OK
+  MISSING
+  STALE
+  ERROR
 }
 
 enum RiskLevel {
@@ -24,6 +57,7 @@ enum RiskLevel {
 enum AnomalyType {
   LIQUIDITY_WITHDRAWAL
   TX_SPIKE
+  TVL_DECLINE
   WHALE_MOVEMENT
   PRICE_DEVIATION
   RUG_PULL_SIGNAL
@@ -34,16 +68,77 @@ model Protocol {
   slug      String           @unique
   name      String
   category  ProtocolCategory
-  programId String           @unique
+  programId String           @unique // legacy "primary address"; protocol_addresses is the source of truth
   isActive  Boolean          @default(true)
   createdAt DateTime         @default(now())
+  supportLevel SupportLevel  @default(PARTIAL)
 
   snapshots      ProtocolSnapshot[]
   riskScores     RiskScore[]
   anomalies      Anomaly[]
   watchlistItems WatchlistItem[]
+  addresses      ProtocolAddress[]
+  observations   MetricObservation[]
 
   @@map("protocols")
+}
+
+// Registry of on-chain addresses per protocol. Rows are deactivated, never
+// deleted: RESTRICT foreign keys refuse deletes that would orphan history.
+// DB-only constraint (not expressible in Prisma): address must be base58, 32-44 chars.
+model ProtocolAddress {
+  id                 String              @id @default(cuid())
+  protocolId         String
+  protocol           Protocol            @relation(fields: [protocolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  address            String
+  kind               AddressKind
+  label              String
+  // The same shared program (e.g. SPL Stake Pool) may back many protocols.
+  isSharedDependency Boolean             @default(false)
+  expectedOwner      String?
+  verification       AddressVerification @default(UNVERIFIED)
+  verifiedAt         DateTime?
+  verificationNote   String?
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @default(now()) @updatedAt
+  observations       MetricObservation[]
+
+  @@unique([protocolId, address])
+  // Target of the composite FK that pins an observation's address to its protocol.
+  @@unique([id, protocolId])
+  @@index([address])
+  @@map("protocol_addresses")
+}
+
+// Raw measurements only; interpretation (evidence) is computed from these on
+// read and references their ids. DB-only CHECK constraints (not expressible
+// in Prisma): OK/STALE rows carry a value, MISSING/ERROR rows carry none, and
+// ERROR rows carry an errorCode.
+model MetricObservation {
+  id               String            @id @default(cuid())
+  protocolId       String
+  protocol         Protocol          @relation(fields: [protocolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  addressId        String?
+  // Composite FK: (addressId, protocolId) must name an address of the SAME protocol.
+  // NULL addressId (protocol-level metric) skips the check (MATCH SIMPLE).
+  address          ProtocolAddress?  @relation(fields: [addressId, protocolId], references: [id, protocolId], onDelete: Restrict, onUpdate: Restrict)
+  metricKey        String
+  status           ObservationStatus
+  valueNumeric     Decimal?          @db.Decimal(40, 12)
+  valueText        String?
+  unit             String
+  source           String
+  sourceObservedAt DateTime? // when the source measured it (NULL if the source gives only a slot)
+  sourceSlot       BigInt? // RPC context slot for on-chain reads
+  collectedAt      DateTime          @default(now()) // when SolanaGuard fetched it
+  adapterKey       String
+  adapterVersion   String
+  errorCode        String? // sanitised identifier, never a URL or credential
+
+  @@index([protocolId, metricKey, collectedAt(sort: Desc)])
+  @@index([addressId, metricKey, collectedAt(sort: Desc)])
+  @@map("metric_observations")
 }
 
 model ProtocolSnapshot {
@@ -52,7 +147,7 @@ model ProtocolSnapshot {
   protocol         Protocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
   tvlUsd           Float
   volume24hUsd     Float    @default(0)
-  txCount24h       Int      @default(0)
+  txCount24h       Int? // NULL = transaction count unavailable (never a genuine zero)
   uniqueWallets24h Int      @default(0)
   liquidityDepth   Float    @default(0)
   utilizationRate  Float    @default(0)
@@ -77,17 +172,23 @@ model RiskScore {
 }
 
 model Anomaly {
-  id           String      @id @default(cuid())
-  protocolId   String
-  protocol     Protocol    @relation(fields: [protocolId], references: [id], onDelete: Cascade)
-  type         AnomalyType
-  severity     RiskLevel
-  score        Float
-  description  String
-  acknowledged Boolean     @default(false)
-  detectedAt   DateTime    @default(now())
+  id               String      @id @default(cuid())
+  protocolId       String
+  protocol         Protocol    @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  sourceSnapshotId String
+  detectorVersion  String      @default("legacy")
+  detectionMethod  String      @default("legacy")
+  type             AnomalyType
+  severity         RiskLevel
+  score            Float       // Calibration percentile in [0, 100]
+  rawScore         Float?
+  scoreThreshold   Float?
+  description      String
+  acknowledged     Boolean     @default(false)
+  detectedAt       DateTime    @default(now())
 
   @@index([protocolId, detectedAt])
+  @@unique([protocolId, sourceSnapshotId, detectorVersion, type])
   @@map("anomalies")
 }
 
@@ -97,10 +198,34 @@ model User {
   email          String          @unique
   createdAt      DateTime        @default(now())
   watchlistItems WatchlistItem[]
-  telegramChatId String?
+  // Telegram private chat that receives alerts. Unique: one chat belongs to at
+  // most one account, so a link can never silently move a chat between users.
+  telegramChatId     String?             @unique
   subscription Subscription?
+  telegramLinkTokens TelegramLinkToken[]
+  retiredBillingSubscriptions RetiredBillingSubscription[]
+  billingWebhookEvents        BillingWebhookEvent[]
 
   @@map("users")
+}
+
+// Single-use, short-lived token behind a Telegram deep link (t.me/<bot>?start=<token>).
+// Only the SHA-256 hex digest is stored; the plaintext token is shown once to the
+// signed-in user. A token is usable while consumedAt and revokedAt are null and
+// expiresAt is in the future. Issuing a new token revokes the user's unused ones.
+model TelegramLinkToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("telegram_link_tokens")
 }
 
 model WatchlistItem {
@@ -119,16 +244,105 @@ enum PlanTier {
   PRO
 }
 
+// Local checkout reservation made before Razorpay is called (see billing-core.ts).
+enum CheckoutStatus {
+  RESERVED // reservation committed; Razorpay create call in flight
+  CREATED // Razorpay subscription ID bound to this reservation
+  FAILED // Razorpay definitively rejected the create call (4xx); nothing exists remotely
+  UNRESOLVED // outcome unknown (timeout/network/5xx); never retried automatically
+}
+
+enum CancelMode {
+  IMMEDIATE
+  CYCLE_END
+}
+
 model Subscription {
-  id                     String    @id @default(cuid())
-  userId                 String    @unique
-  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  razorpaySubscriptionId String?   @unique
-  plan                   PlanTier  @default(FREE)
-  status                 String    @default("created")
+  id                     String          @id @default(cuid())
+  userId                 String          @unique
+  user                   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  razorpaySubscriptionId String?         @unique
+  // Last-known plan snapshot only; access is computed by computeEntitlement().
+  plan                   PlanTier        @default(FREE)
+  status                 String          @default("created")
+  // Paid-through date; only trusted when paymentConfirmedAt is set.
   currentPeriodEnd       DateTime?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  checkoutAttemptId      String?         @unique
+  checkoutStatus         CheckoutStatus?
+  checkoutStartedAt      DateTime?
+  // Set only from an event proving a successful charge (status active, paid_count >= 1).
+  paymentConfirmedAt     DateTime?
+  // Provider created_at of the latest applied webhook event (ordering guard).
+  lastEventAt            DateTime?
+  // Type of that event; resolves same-second ordering (see SUPERSEDED_BY).
+  lastEventType          String?
+  endedAt                DateTime?
+  // Application-recorded cancellation intent, bound to one Razorpay subscription ID.
+  cancelMode             CancelMode?
+  cancelRequestedAt      DateTime?
+  cancelSubscriptionId   String?
 
   @@map("subscriptions")
+}
+
+enum BillingEventIdSource {
+  PROVIDER_HEADER // x-razorpay-event-id
+  BODY_SHA256 // fallback: header absent; id is "body-sha256:<hex of raw body>"
+}
+
+enum BillingEventOutcome {
+  PROCESSED
+  IGNORED
+  RECONCILIATION_REQUIRED // charge notification needing an operator (ended subscription, or notes disagreeing with the local owner)
+}
+
+enum RetirementReason {
+  APP_CANCELLED // still "created" at Razorpay; cancelled immediately by checkout
+  ALREADY_FINAL // Razorpay already reported cancelled / completed / expired
+}
+
+// A Razorpay subscription detached from its owner's current Subscription row
+// when a stale, unpaid checkout was retired. Insert-only: never updated, so a
+// later checkout can never overwrite it. Late events for it are flagged, never
+// applied. Restrict: a user with retired billing history cannot be silently
+// deleted with it.
+model RetiredBillingSubscription {
+  razorpaySubscriptionId String              @id
+  userId                 String
+  user                   User                @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  checkoutAttemptId      String?             @unique // null only for a legacy checkout without one
+  providerStatus         String
+  reason                 RetirementReason
+  retiredAt              DateTime
+
+  @@index([userId])
+  @@map("retired_billing_subscriptions")
+}
+
+// One row per received, signature-verified Razorpay webhook event. Holds no raw
+// payload, signature, payment, card or customer data.
+model BillingWebhookEvent {
+  id                     String               @id // event identity (unique)
+  idSource               BillingEventIdSource
+  eventType              String
+  razorpaySubscriptionId String?
+  providerCreatedAt      DateTime?            // null only for a signed body that could not be parsed
+  receivedAt             DateTime
+  processedAt            DateTime?
+  outcome                BillingEventOutcome?
+  reason                 String?
+  bodySha256             String
+  // The LOCAL owner an operator must look at: set only from the exact local
+  // mapping (current row, attempt reservation, or retired mapping), never from
+  // payload notes. Null for ordinary events.
+  userId                 String?
+  user                   User?                @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([razorpaySubscriptionId, providerCreatedAt])
+  @@index([receivedAt])
+  @@index([outcome, receivedAt])
+  @@index([userId])
+  @@map("billing_webhook_events")
 }

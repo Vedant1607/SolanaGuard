@@ -14,7 +14,7 @@ AI-powered DeFi risk monitor for Solana. Real-time protocol monitoring, risk sco
 ## Live
 
 * **Web:** `<your-vercel-url>`
-* **API:** `<your-railway-url>/health`
+* **API:** `<your-render-url>/health`
 
 ## Monitored protocols
 
@@ -32,7 +32,7 @@ Raydium, Orca (DEX) · Kamino, Marginfi (Lending) · Marinade, Jito (Liquid Stak
 * **Database:** PostgreSQL 18 via Prisma 7 (`packages/database`)
 * **Data sources:** Helius (Solana RPC), DefiLlama (TVL)
 * **Alerts:** Resend (email)
-* **Deploy:** Vercel (web), Railway (API + Postgres)
+* **Deploy:** Vercel (web), Render (API + history cron, `render.yaml`), Neon (Postgres)
 
 ## Repo structure
 
@@ -98,4 +98,17 @@ Web: http://localhost:3000 · API: http://localhost:8000/docs
 
 ## Deployment
 
-`main` is the production branch — Railway and Vercel both auto-deploy on push. Feature work happens on separate branches (e.g. `feature/phase-2`) and merges into `main` when ready to ship.
+`main` is the production branch. Feature work happens on separate branches (e.g. `feature/phase-2`) and merges into `main` when ready to ship.
+
+* **Web — Vercel** (`apps/web`): auto-deploys on push.
+* **API — Render**, from the Blueprint in [`render.yaml`](render.yaml): one always-on Docker web service (`apps/api/Dockerfile`, health check `/health`) and a cron job, `scripts/refresh_defillama_history.py`, that refreshes DefiLlama TVL and token history every 6 hours. `autoDeploy` is off until the first deployment has been verified. `apps/api/railway.json` is the previous Railway setup and is kept until the Render deployment is validated.
+* **Database — Neon.** Use the **direct** (non-pooled) connection string with `sslmode=require` for the API and the cron job (session advisory locks). Apply migrations with Prisma (`prisma migrate deploy` in `packages/database`).
+
+Production API settings (`ENVIRONMENT=production`; the API refuses to start otherwise):
+
+* `DEBUG=false`, `ALLOWED_ORIGINS` set explicitly to the web app's https origin(s), `DEFILLAMA_HISTORY_REFRESH_ENABLED=false` (the identity-gated scheduler is for local development; hosted refresh is the cron job).
+* `INTERNAL_API_SECRET` (≥ 32 characters): required in the `X-Internal-Api-Secret` header by `POST /api/v1/protocols/ingest`, `POST /api/v1/protocols/{slug}/test-alert` and `POST /api/v1/telegram/test-message`. Without it those endpoints return 503.
+* `TELEGRAM_WEBHOOK_SECRET`: must match the `secret_token` passed to Telegram's `setWebhook`; without it the webhook rejects every request.
+* `DATABASE_URL`, `HELIUS_API_KEY`, `SOLANA_RPC_URL`; optional `RESEND_API_KEY`, `ALERT_FROM_EMAIL`, `TELEGRAM_BOT_TOKEN`. The cron job also needs `DEFILLAMA_REFRESH_EXPECTED_DATABASE` (the Neon database name it must find before writing).
+
+Locally the API defaults to `ENVIRONMENT=development`; set `INTERNAL_API_SECRET` in `apps/api/.env` if you want to call the internal endpoints.

@@ -4,17 +4,41 @@ import { useState } from "react";
 import Script from "next/script";
 import { createSubscription } from "@/lib/billing-actions";
 
-export function UpgradeButton() {
+export function UpgradeButton({ enabled }: { enabled: boolean }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!enabled) {
+    return (
+      <div className="text-center">
+        <button disabled className="w-full cursor-not-allowed rounded bg-slate-800 py-2 text-sm font-bold text-slate-500">
+          Upgrade to Pro
+        </button>
+        <p className="mt-2 text-xs text-slate-500">Upgrades are not available in this environment.</p>
+      </div>
+    );
+  }
 
   async function handleUpgrade() {
     setLoading(true);
+    setError(null);
     try {
-      const { subscriptionId, keyId } = await createSubscription();
+      const result = await createSubscription();
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
 
-      const options = {
-        key: keyId,
-        subscription_id: subscriptionId,
+      // @ts-expect-error Razorpay is loaded globally via the script tag below
+      const RazorpayCheckout = window.Razorpay;
+      if (typeof RazorpayCheckout !== "function") {
+        setError("Checkout could not be loaded. Please try again.");
+        return;
+      }
+
+      const rzp = new RazorpayCheckout({
+        key: result.keyId,
+        subscription_id: result.subscriptionId,
         name: "SolanaGuard",
         description: "Pro plan — monthly",
         handler: function () {
@@ -25,11 +49,10 @@ export function UpgradeButton() {
           window.location.href = "/pricing?success=true";
         },
         theme: { color: "#06b6d4" },
-      };
-
-      // @ts-expect-error Razorpay is loaded globally via the script tag below
-      const rzp = new window.Razorpay(options);
+      });
       rzp.open();
+    } catch {
+      setError("Could not start checkout. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -45,6 +68,7 @@ export function UpgradeButton() {
       >
         {loading ? "Loading..." : "Upgrade to Pro"}
       </button>
+      {error && <p role="alert" className="mt-2 text-center text-xs text-amber-300">{error}</p>}
     </>
   );
 }

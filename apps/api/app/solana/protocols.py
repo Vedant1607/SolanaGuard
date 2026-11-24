@@ -11,6 +11,7 @@ six (Kamino, Marginfi) were wrong and have been corrected.
 import httpx
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from app.solana.client import get_solana_client
 
@@ -31,20 +32,31 @@ LAUNCH_PROTOCOLS = {
 class ProtocolMetrics:
     slug: str
     tvl_usd: float
-    tx_count_24h: int
+    tx_count_24h: int | None  # None = unavailable, never a genuine zero
 
 
-async def fetch_tvl(llama_slug: str) -> float:
+async def fetch_tvl(llama_slug: str) -> float | None:
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             resp = await client.get(f"https://api.llama.fi/protocol/{llama_slug}")
             if resp.status_code == 200:
                 tvl_series = resp.json().get("tvl", [])
                 if tvl_series:
-                    return tvl_series[-1].get("totalLiquidityUSD", 0.0)
+                    tvl_usd = tvl_series[-1].get("totalLiquidityUSD")
+                    if isinstance(tvl_usd, (int, float)) and tvl_usd > 0:
+                        return float(tvl_usd)
         except Exception as e:
             logger.warning(f"DefiLlama fetch failed for {llama_slug}: {e}")
-    return 0.0
+    return None
+
+
+def _describe_rpc_error(error: Exception) -> str:
+    """Summarise an RPC failure without echoing the request URL, which embeds the API key."""
+    if isinstance(error, httpx.HTTPStatusError):
+        return f"HTTP {error.response.status_code}"
+    if isinstance(error, httpx.HTTPError):
+        return type(error).__name__
+    return f"{type(error).__name__}: {error}"
 
 
 async def get_protocol_metrics(slug: str) -> Optional[ProtocolMetrics]:
@@ -53,13 +65,23 @@ async def get_protocol_metrics(slug: str) -> Optional[ProtocolMetrics]:
         return None
 
     tvl_usd = await fetch_tvl(cfg["llama_slug"])
+    if tvl_usd is None:
+        logger.warning(f"No valid TVL returned for {slug}, skipping snapshot")
+        return None
 
-    tx_count_24h = 0
+    tx_count_24h: int | None
     try:
         client = get_solana_client()
-        sigs = await client.get_recent_signatures(cfg["program_id"], limit=100)
-        tx_count_24h = len(sigs)
+        window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+        tx_count_24h = await client.count_signatures_since(
+            cfg["program_id"],
+            int(window_start.timestamp()),
+        )
     except Exception as e:
-        logger.warning(f"Helius tx fetch failed for {slug}: {e}")
+        tx_count_24h = None
+        logger.warning(
+            f"Helius 24-hour transaction count unavailable for {slug} "
+            f"({_describe_rpc_error(e)}); storing TVL-only snapshot with txCount24h=NULL"
+        )
 
     return ProtocolMetrics(slug=slug, tvl_usd=tvl_usd, tx_count_24h=tx_count_24h)
